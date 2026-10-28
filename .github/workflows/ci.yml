@@ -35,6 +35,7 @@ jobs:
 
       - name: CLI smoke test
         run: |
+          ./bin/mynashine --version
           python -m myna run src/main.myna --version
           python -m myna run src/main.myna code examples/demo.myna --lang myna > /tmp/mynashine-code.html
           python -m myna run src/main.myna code examples/demo.myna --wrap --lines > /tmp/mynashine-block.html
