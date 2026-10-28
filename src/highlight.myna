@@ -189,16 +189,26 @@
       ^>
     }
     code_open_end = find_sub(html, ">", code_start)
-    ? code_open_end < 0 {
-      out.append(html[start:])
-      i = n
+    ? code_open_end < 0 || (pre_close >= 0 && code_open_end > pre_close) {
+      ? pre_close < 0 {
+        out.append(html[start:])
+        i = n
+      } : {
+        out.append(html[start:pre_close + 6])
+        i = pre_close + 6
+      }
       ^>
     }
     code_open = html[code_start:code_open_end + 1]
     code_close = find_sub(html, "</code>", code_open_end + 1)
-    ? code_close < 0 {
-      out.append(html[start:])
-      i = n
+    ? code_close < 0 || (pre_close >= 0 && code_close > pre_close) {
+      ? pre_close < 0 {
+        out.append(html[start:])
+        i = n
+      } : {
+        out.append(html[start:pre_close + 6])
+        i = pre_close + 6
+      }
       ^>
     }
     lang = code_language(code_open)
