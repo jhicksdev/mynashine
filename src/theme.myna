@@ -7,8 +7,8 @@
 
 @theme_light_vars()->s {
   ^ join_str([
-    "--hl-bg:#f0ede5;",
-    "--hl-fg:#1d1d1b;",
+    "--hl-bg:var(--code-bg,#f0ede5);",
+    "--hl-fg:var(--fg,#1d1d1b);",
     "--hl-kw:#9d174d;",
     "--hl-decl:#6d28d9;",
     "--hl-imp:#0f766e;",
@@ -30,8 +30,8 @@
 
 @theme_dark_vars()->s {
   ^ join_str([
-    "--hl-bg:#24231f;",
-    "--hl-fg:#f0ede5;",
+    "--hl-bg:var(--code-bg,#24231f);",
+    "--hl-fg:var(--fg,#f0ede5);",
     "--hl-kw:#f9a8d4;",
     "--hl-decl:#c4b5fd;",
     "--hl-imp:#5eead4;",
