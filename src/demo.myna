@@ -269,7 +269,11 @@
   }
   task_code = excerpt(`{myna_repo}/examples/demo.myna`, 40)
   ? task_code == "" {
-    task_code = fallback_myna()
+    ? is_file("examples/demo.myna") {
+      task_code = read_file("examples/demo.myna")
+    } : {
+      task_code = fallback_myna()
+    }
   }
   template_code = excerpt(`{press_repo}/src/template.myna`, 54)
   ? template_code == "" {
