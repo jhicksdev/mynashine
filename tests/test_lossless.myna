@@ -1,9 +1,9 @@
 @target(py)
 <os
 <.harness:{new_results, eq_b, eq_i, check, lossless, summary, note}
-<.src.fsutil:{read_file, is_dir, is_file, list_dir, join_path}
-<.src.highlight:{highlight_code}
-<.src.util:{strip_tags, html_unescape}
+<..src.fsutil:{read_file, is_dir, is_file, list_dir, join_path}
+<..src.highlight:{highlight_code}
+<..src.util:{strip_tags, html_unescape}
 
 @collect_myna(dir:s, out:[s]) {
   % name <- list_dir(dir) {

@@ -1,7 +1,7 @@
 @target(py)
 <.harness:{new_results, eq_b, eq_i, eq_s, check, contains, not_contains, lossless, summary}
-<.src.highlight:{highlight_html_document, highlight_block}
-<.src.util:{strip_tags, html_unescape}
+<..src.highlight:{highlight_html_document, highlight_block}
+<..src.util:{strip_tags, html_unescape}
 <.markdown_fixture:{render_fences}
 
 @run_html_tests()->[i] {

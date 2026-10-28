@@ -1,12 +1,12 @@
 @target(py)
 <random
 <.harness:{new_results, eq_i, eq_s, eq_b, check, contains, not_contains, kind_nth, kind_in, lossless, summary}
-<.src.highlight:{highlight_code, highlight_block}
-<.src.lang_py:{scan_python}
-<.src.lang_js:{scan_javascript}
-<.src.lang_config:{scan_config}
-<.src.lang_shell:{scan_shell}
-<.src.lang_markup:{scan_markup}
+<..src.highlight:{highlight_code, highlight_block}
+<..src.lang_py:{scan_python}
+<..src.lang_js:{scan_javascript}
+<..src.lang_config:{scan_config}
+<..src.lang_shell:{scan_shell}
+<..src.lang_markup:{scan_markup}
 
 @random_blob(chars:[s], max_len:i)->s {
   out = []
@@ -121,6 +121,7 @@
     "/*",
     "\\",
     "a\r\nb\tc",
+    "a\fb\vc",
     "0x",
     "1..2",
     "x :? [",

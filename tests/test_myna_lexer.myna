@@ -1,6 +1,6 @@
 @target(py)
 <.harness:{new_results, eq_i, eq_s, eq_b, check, contains, kind_nth, kind_in, count_text, lossless, summary, note}
-<.src.myna_lexer:{scan_myna}
+<..src.myna_lexer:{scan_myna}
 
 @run_myna_lexer_tests()->[i] {
   r = new_results()

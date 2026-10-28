@@ -20,6 +20,9 @@
   ^ is_id_start(ch) || is_digit(ch)
 }
 
+# Keep this set free of \f/\v escape literals: released Myna 0.4.2 does not
+# decode them, which would silently make the letters f and v count as spaces.
+# Form-feed/vtab characters still pass through losslessly as plain text.
 @is_space(ch:s)->b {
   ^ ch == " " || ch == "\t" || ch == "\r"
 }

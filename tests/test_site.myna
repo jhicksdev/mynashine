@@ -3,9 +3,9 @@
 <tempfile
 <shutil
 <.harness:{new_results, eq_i, eq_b, eq_s, check, contains, summary}
-<.src.fsutil:{read_file, write_file, ensure_dir, is_file, join_path}
-<.src.site_proc:{process_site}
-<.src.theme:{default_css}
+<..src.fsutil:{read_file, write_file, ensure_dir, is_file, join_path}
+<..src.site_proc:{process_site}
+<..src.theme:{default_css}
 
 @run_site_tests()->[i] {
   r = new_results()

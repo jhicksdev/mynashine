@@ -1,6 +1,6 @@
 @target(py)
-<.src.highlight:{highlight_code, highlight_block, highlight_html_document}
-<.src.util:{strip_tags, html_unescape, join_str}
+<..src.highlight:{highlight_code, highlight_block, highlight_html_document}
+<..src.util:{strip_tags, html_unescape, join_str}
 
 @new_results()->[i] {
   ^ [0, 0]

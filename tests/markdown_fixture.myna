@@ -1,5 +1,5 @@
 @target(py)
-<.src.util:{html_escape}
+<..src.util:{html_escape}
 
 # A deliberately tiny fenced-code renderer that mirrors MynaPress's markdown
 # output shape. It is a test fixture, not product behaviour.

@@ -1,10 +1,16 @@
 @target(py)
 <sys
-<.test_myna_lexer:{run_myna_lexer_tests}
-<.test_companions:{run_companion_tests}
-<.test_html_proc:{run_html_tests}
-<.test_lossless:{run_lossless_tests}
-<.test_site:{run_site_tests}
+
+# Run from the repository root:
+#   python3 -m myna run --module-root . tests/run_tests.myna
+# `--module-root .` lets this entry import `.tests.*` while test modules reach
+# the source tree as `..src.*` (replacing the old tests/src symlink workaround).
+
+<.tests.test_myna_lexer:{run_myna_lexer_tests}
+<.tests.test_companions:{run_companion_tests}
+<.tests.test_html_proc:{run_html_tests}
+<.tests.test_lossless:{run_lossless_tests}
+<.tests.test_site:{run_site_tests}
 
 @main {
   p("MynaShine test suite")

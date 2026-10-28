@@ -44,9 +44,19 @@ parsing a full AST.
 
 - Python 3.11+
 - [`myna-lang`](https://pypi.org/project/myna-lang/) 0.4.2 or newer
+- Node 20.11+ only for the optional JavaScript-target smoke test
 
 ```bash
 python3 -m pip install "myna-lang>=0.4.2"
+```
+
+The runtime CLI/module API works on released 0.4.2. The development test suite uses
+`--module-root`, and the JavaScript smoke test uses multi-file relative imports; both are
+part of the Myna fixes made after 0.4.2. Until those are released, install Myna from
+`main` for development:
+
+```bash
+python3 -m pip install "git+https://github.com/jhicksdev/myna.git@main"
 ```
 
 For local development against a Myna checkout:
@@ -229,6 +239,32 @@ html = highlight_code(code, "myna", T)
 The stylesheet renders `data-line` with a pseudo-element, so line numbers are not part of
 the copied text.
 
+## JavaScript target
+
+The core modules (`util`, `token`, `myna_lexer`, all language scanners, `highlight`, and
+`theme`) declare `@target(py, js)` and avoid Python-only APIs. With the post-0.4.2 Myna
+fixes they compile to multi-file ES modules:
+
+```bash
+python3 -m myna run -t js --module-root . tests/js_smoke.myna
+```
+
+Expected output:
+
+```text
+js-lossless=true
+js-keyword=true
+js-type=true
+js-interp=true
+js-css=true
+js-document=true
+js-smoke-ok=true
+```
+
+`myna run -t js` compiles the reachable import graph into temporary `.mjs` files and runs
+it with Node. Single-file JavaScript bundling remains out of scope; the supported
+JavaScript unit is a tree of ES modules. `myna bundle` continues to target Python.
+
 ## Architecture
 
 ```text
@@ -256,6 +292,7 @@ tests/
   test_html_proc.myna
   test_lossless.myna
   test_site.myna
+  js_smoke.myna      # portable-core smoke test, runnable under Python or Node
 ```
 
 The core scanners, token layer, renderer, theme generator, and public highlighter declare
@@ -284,19 +321,23 @@ stray sigils, and non-ASCII text.
 ## Development
 
 ```bash
-# From the repository root:
-python3 -m myna run tests/run_tests.myna
+# From the repository root (requires Myna with the post-0.4.2 fixes):
+python3 -m myna run --module-root . tests/run_tests.myna
 
 # Or against a local Myna checkout:
-PYTHONPATH=/home/joseph/Projects/myna python3 -m myna run tests/run_tests.myna
+PYTHONPATH=/home/joseph/Projects/myna python3 -m myna run --module-root . tests/run_tests.myna
+
+# Portable core under Node:
+PYTHONPATH=/home/joseph/Projects/myna python3 -m myna run -t js --module-root . tests/js_smoke.myna
 
 # Generate the showcase:
 python3 -m myna run src/main.myna demo -o build/demo.html
 ```
 
-The test entrypoint lives in `tests/`, and Myna resolves relative imports from the entry
-file's directory. `tests/src -> ../src` is a symlink that makes `<.src...` resolve to the
-repository source tree. See `GAPS.md` G3.
+The test entrypoint lives in `tests/` and imports its sibling modules as
+`<.tests.test_...>`; test modules reach the source tree as `<..src...>`. `--module-root .`
+makes both resolve from the repository root, so no `tests/src` symlink is needed. See
+`GAPS.md` G3 for the original failure and the upstream fix.
 
 `python3 -m myna stats src/main.myna --show` reports token statistics for a file (the
 `stats` command takes one input file, not a directory).
@@ -307,9 +348,9 @@ v0.1 targets **HTML + CSS highlighting for fenced code blocks**, primarily MynaP
 not a VS Code extension, TextMate grammar, Tree-sitter grammar, LSP semantic-token
 provider, or browser-side highlighter.
 
-Known Myna toolchain friction is recorded in [`GAPS.md`](GAPS.md). The most notable item is
-that Myna's JavaScript target currently rejects relative imports, so the pure core can be
-compiled to JS only when bundled or rewritten with a single-file import strategy.
+All three Myna toolchain gaps found during development are fixed upstream and verified:
+full string escapes, multi-file JavaScript relative imports, and `--module-root`. See
+[`GAPS.md`](GAPS.md). Single-file JavaScript bundling remains out of scope.
 
 ## License
 

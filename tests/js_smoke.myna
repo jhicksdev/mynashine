@@ -1,0 +1,30 @@
+@target(py, js)
+<.src.highlight:{highlight_code, highlight_html_document, default_css}
+<.src.util:{strip_tags, html_unescape, find_sub}
+
+# Cross-target smoke test for the portable core. Run with:
+#   myna run -t js --module-root . tests/js_smoke.myna
+# It deliberately avoids Python-only APIs.
+
+@main {
+  code = "? x :? [s] { p(`hi {x + 1:.2f}`) }\n"
+  html = highlight_code(code, "myna", F)
+  lossless_ok = html_unescape(strip_tags(html)) == code
+  kw_ok = find_sub(html, "hl-kw", 0) >= 0
+  type_ok = find_sub(html, "hl-type", 0) >= 0
+  interp_ok = find_sub(html, "hl-interp", 0) >= 0
+  css = default_css("mynapress")
+  css_ok = find_sub(css, "--hl-kw", 0) >= 0 && find_sub(css, "prefers-color-scheme", 0) >= 0
+  doc = "<pre><code class=\"language-myna\">? x { ^1 }</code></pre>"
+  processed = highlight_html_document(doc)
+  doc_ok = find_sub(processed, "pre class=\"hl\"", 0) >= 0
+  all_ok = lossless_ok && kw_ok && type_ok && interp_ok && css_ok && doc_ok
+
+  p(`js-lossless={lossless_ok}`)
+  p(`js-keyword={kw_ok}`)
+  p(`js-type={type_ok}`)
+  p(`js-interp={interp_ok}`)
+  p(`js-css={css_ok}`)
+  p(`js-document={doc_ok}`)
+  p(`js-smoke-ok={all_ok}`)
+}

@@ -6,6 +6,34 @@ on:
   pull_request:
 
 jobs:
+  compat:
+    name: CLI on released myna-lang 0.4.2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install released Myna
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "myna-lang==0.4.2"
+
+      - name: Runtime smoke test
+        run: |
+          python -m myna run src/main.myna --version
+          python -m myna run src/main.myna code examples/demo.myna --lang myna > /tmp/code.html
+          python -m myna run src/main.myna css --theme mynapress > /tmp/theme.css
+          mkdir -p /tmp/site
+          printf '<pre><code class="language-myna">? x { ^1 }</code></pre>\n' > /tmp/site/index.html
+          python -m myna run src/main.myna site /tmp/site --inject-css
+          grep -q 'pre class="hl"' /tmp/site/index.html
+          grep -q -- '--hl-kw' /tmp/site/assets/style.css
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -22,16 +50,28 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Myna
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Myna with module-root and JS import fixes
         run: |
           python -m pip install --upgrade pip
           python -m pip install "myna-lang>=0.4.2"
-
-      - name: Verify test module symlink
-        run: test -L tests/src
+          if ! python -m myna run --help 2>&1 | grep -q -- "--module-root"; then
+            echo "Installed Myna predates the G1-G3 fixes; installing main."
+            python -m pip install --force-reinstall --no-deps "git+https://github.com/jhicksdev/myna.git@main"
+          fi
+          python -m myna run --help 2>&1 | grep -q -- "--module-root"
 
       - name: Run Myna test suite
-        run: python -m myna run tests/run_tests.myna
+        run: python -m myna run --module-root . tests/run_tests.myna
+
+      - name: Portable core under Node
+        run: |
+          python -m myna run -t js --module-root . tests/js_smoke.myna | tee /tmp/js_smoke.txt
+          grep -q "js-smoke-ok=true" /tmp/js_smoke.txt
 
       - name: CLI smoke test
         run: |
@@ -45,6 +85,11 @@ jobs:
           test -s /tmp/mynashine-code.html
           test -s /tmp/mynashine-block.html
           test -s /tmp/mynashine.css
+
+      - name: Compile the portable core to JavaScript
+        run: |
+          python -m myna compile src/highlight.myna -t js -o /tmp/highlight.js
+          test -s /tmp/highlight.js
 
       - name: Ensure no generated sources are tracked
         run: |
