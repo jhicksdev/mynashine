@@ -40,6 +40,8 @@
   eq_s(r, kind_nth(t, "%~", 0), "kw", "%~ async for is a keyword")
   t = scan_myna("%? cond { }")
   eq_s(r, kind_nth(t, "%?", 0), "kw", "%? while is a keyword")
+  t = scan_myna("%? x <- xs { }")
+  eq_s(r, kind_nth(t, "<-", 0), "op", "<- in a while condition is membership")
   t = scan_myna("% x <- xs { } %: { }")
   eq_s(r, kind_nth(t, "%:", 0), "kw", "%: loop else is a keyword")
 

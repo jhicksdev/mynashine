@@ -868,10 +868,10 @@
       ? stmt {
         out.append(["kw", sig])
         i += #sig
-        ? sig == "%:" {
-          loop_header = F
-        } : {
+        ? sig == "%" || sig == "%~" {
           loop_header = T
+        } : {
+          loop_header = F
         }
         stmt = F
         prev = sig
