@@ -164,5 +164,5 @@ top-level package. Any of these would remove the need for layout-specific symlin
 
 No compiler crashes, incorrect tokenisation of valid Myna source, or code-generation
 failures were encountered beyond the items above. The lossless corpus (all `.myna` files
-in MynaShine, the Myna examples, and MynaPress `src/`; 52 files at time of writing)
+in MynaShine, the Myna examples, and MynaPress `src/`; 37 files at time of writing)
 highlighted without exceptions.
