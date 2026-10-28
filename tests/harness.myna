@@ -1,0 +1,126 @@
+@target(py)
+<.src.myna_lexer:{scan_myna}
+<.src.token:{render_inner}
+<.src.util:{strip_tags, html_unescape, join_str}
+
+@new_results()->[i] {
+  ^ [0, 0]
+}
+
+@note(label:s, detail:s) {
+  p(`  FAIL {label}`)
+  ? detail != "" {
+    p(detail)
+  }
+}
+
+@eq_s(results:[i], actual:s, expected:s, label:s) {
+  ? actual == expected {
+    results[0] += 1
+  } : {
+    results[1] += 1
+    note(label, `    expected: {expected}\n    actual:   {actual}`)
+  }
+}
+
+@eq_i(results:[i], actual:i, expected:i, label:s) {
+  ? actual == expected {
+    results[0] += 1
+  } : {
+    results[1] += 1
+    note(label, `    expected: {expected}\n    actual:   {actual}`)
+  }
+}
+
+@eq_b(results:[i], actual:b, expected:b, label:s) {
+  ? actual == expected {
+    results[0] += 1
+  } : {
+    results[1] += 1
+    note(label, `    expected: {expected}\n    actual:   {actual}`)
+  }
+}
+
+@check(results:[i], condition:b, label:s, detail:s="") {
+  ? condition {
+    results[0] += 1
+  } : {
+    results[1] += 1
+    note(label, detail)
+  }
+}
+
+@contains(results:[i], haystack:s, needle:s, label:s) {
+  hit = haystack.find(needle) >= 0
+  ? hit {
+    results[0] += 1
+  } : {
+    results[1] += 1
+    note(label, `    missing: {needle}\n    in: {haystack[0:240]}`)
+  }
+}
+
+@not_contains(results:[i], haystack:s, needle:s, label:s) {
+  ? haystack.find(needle) < 0 {
+    results[0] += 1
+  } : {
+    results[1] += 1
+    note(label, `    unexpected: {needle}`)
+  }
+}
+
+@lossless(results:[i], code:s, lang:s, label:s) {
+  !{
+    html = render_inner(scan_myna(code), F)
+    got = html_unescape(strip_tags(html))
+    ? got == code {
+      results[0] += 1
+    } : {
+      results[1] += 1
+      i = 0
+      %? i < #code && i < #got && code[i] == got[i] {
+        i += 1
+      }
+      note(label, `    first difference at {i}\n    expected: {code[i:i + 60]}\n    actual:   {got[i:i + 60]}`)
+    }
+  } !!e {
+    results[1] += 1
+    note(label, `    raised: {e}`)
+  }
+}
+
+@kind_nth(tokens:[A], text:s, n:i)->s {
+  seen = 0
+  % token <- tokens {
+    ? token[1] == text {
+      ? seen == n {
+        ^ token[0]
+      }
+      seen += 1
+    }
+  }
+  ^ "<missing>"
+}
+
+@kind_in(tokens:[A], text:s, kind:s)->b {
+  % token <- tokens {
+    ? token[1] == text && token[0] == kind {
+      ^ T
+    }
+  }
+  ^ F
+}
+
+@count_text(tokens:[A], text:s)->i {
+  n = 0
+  % token <- tokens {
+    ? token[1] == text {
+      n += 1
+    }
+  }
+  ^ n
+}
+
+@summary(name:s, results:[i]) {
+  p(`{name}: {results[0]} passed, {results[1]} failed`)
+}

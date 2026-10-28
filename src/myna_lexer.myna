@@ -1,0 +1,1474 @@
+@target(py, js)
+<.token:{tok}
+<.util:{is_digit, is_id_start, is_id_cont, is_space, in_text, in_list}
+
+# Context-aware, fault-tolerant Myna scanner.
+#
+# The scanner tracks only enough lexical context for highlighting:
+#   * whether the next token starts a statement;
+#   * whether we are in a loop header (so `<-` reads as a keyword);
+#   * whether a token is in a type position (so `i` is a type there but a
+#     variable name in `i = 0`);
+#   * whether a `.`/`..` begins a leading self/super reference.
+# It never raises on malformed input: unterminated constructs run to EOF and
+# are still emitted as tokens so the lossless invariant holds.
+
+@scan_myna(code:s)->[A] {
+  ^ scan_from(code, T)
+}
+
+@identifier_end(code:s, i:i)->i {
+  j = i
+  n = #code
+  %? j < n && is_id_cont(code[j]) {
+    j += 1
+  }
+  ^ j
+}
+
+@next_nonspace(code:s, i:i)->i {
+  j = i
+  n = #code
+  %? j < n && is_space(code[j]) {
+    j += 1
+  }
+  ^ j
+}
+
+@params_follow(code:s, i:i)->b {
+  j = next_nonspace(code, i)
+  ^ j < #code && code[j] == "("
+}
+
+@can_start_expr(prev:s)->b {
+  ^ prev == "" || in_list(prev, ["{", "(", "[", ",", ";", "=", "=>", "->", ":", "?", "??", "|>", "<-", "+", "-", "*", "/", "%", "^", "!", "&&", "||", "|", "&", "~", "@", "$"])
+}
+
+@is_comment_start(code:s, i:i, stmt:b)->b {
+  n = #code
+  ? i + 1 >= n {
+    ^ T
+  }
+  nxt = code[i + 1]
+  ? nxt == " " || nxt == "\t" || nxt == "#" || nxt == "\n" || nxt == "\r" {
+    ^ T
+  }
+  ? i == 0 && nxt == "!" {
+    ^ T
+  }
+  ^ F
+}
+
+@scan_string_end(code:s, quote_at:i)->i {
+  n = #code
+  quote = code[quote_at]
+  triple = quote_at + 2 < n && code[quote_at + 1] == quote && code[quote_at + 2] == quote
+  i = quote_at + 1
+  ? triple {
+    i = quote_at + 3
+  }
+  %? i < n {
+    ch = code[i]
+    ? ch == "\\" {
+      i += 2
+      ^>
+    }
+    ? triple {
+      ? i + 2 < n && code[i] == quote && code[i + 1] == quote && code[i + 2] == quote {
+        ^ i + 3
+      }
+    } : {
+      ? ch == quote {
+        ^ i + 1
+      }
+    }
+    i += 1
+  }
+  ^ n
+}
+
+@scan_number_end(code:s, i:i)->i {
+  n = #code
+  j = i
+  ? j + 1 < n && code[j] == "0" && in_text(code[j + 1], "xXoObB") {
+    j += 2
+    %? j < n && (is_id_cont(code[j]) || code[j] == "_") {
+      j += 1
+    }
+    ^ j
+  }
+  %? j < n && (is_digit(code[j]) || code[j] == "_") {
+    j += 1
+  }
+  ? j < n && code[j] == "." && !(j + 1 < n && code[j + 1] == ".") {
+    ? j + 1 < n && is_digit(code[j + 1]) {
+      j += 1
+      %? j < n && (is_digit(code[j]) || code[j] == "_") {
+        j += 1
+      }
+    }
+  }
+  ? j < n && (code[j] == "e" || code[j] == "E") {
+    j += 1
+    ? j < n && (code[j] == "+" || code[j] == "-") {
+      j += 1
+    }
+    %? j < n && (is_digit(code[j]) || code[j] == "_") {
+      j += 1
+    }
+  }
+  ^ j
+}
+
+@match_builtin(code:s, i:i)->A {
+  names = ["@flt_n", "@float", "@enum", "@bool", "@list", "@dict", "@open", "@u8d", "@zip", "@map", "@flt", "@srt", "@rev", "@sum", "@min", "@max", "@abs", "@all", "@any", "@str", "@int", "@set", "@tuple", "@rnd", "@u8", "@j", "@J"]
+  % name <- names {
+    size = #name
+    ? i + size <= #code && code[i:i + size] == name {
+      after = i + size
+      ? after >= #code || !is_id_cont(code[after]) {
+        ^ [T, name]
+      }
+    }
+  }
+  ^ [F, ""]
+}
+
+@is_super_dot(code:s, i:i)->b {
+  n = #code
+  j = i + 2
+  ? j < n && is_id_start(code[j]) {
+    k = identifier_end(code, j)
+    k = next_nonspace(code, k)
+    ? k < n && code[k] == "(" {
+      ^ T
+    }
+  }
+  ^ F
+}
+
+@is_await_call(code:s, i:i)->b {
+  n = #code
+  j = next_nonspace(code, i + 1)
+  ? j < n && code[j] == "(" {
+    ^ T
+  }
+  ? j < n && is_id_start(code[j]) {
+    k = identifier_end(code, j)
+    %? k < n && code[k] == "." && k + 1 < n && is_id_start(code[k + 1]) {
+      k = identifier_end(code, k + 1)
+    }
+    k = next_nonspace(code, k)
+    ? k < n && code[k] == "(" {
+      ^ T
+    }
+  }
+  ^ F
+}
+
+@last_kind(tokens:[A])->s {
+  idx = #tokens - 1
+  %? idx >= 0 {
+    ? tokens[idx][0] != "ws" {
+      ^ tokens[idx][0]
+    }
+    idx -= 1
+  }
+  ^ ""
+}
+
+@last_text(tokens:[A])->s {
+  idx = #tokens - 1
+  %? idx >= 0 {
+    ? tokens[idx][0] != "ws" {
+      ^ tokens[idx][1]
+    }
+    idx -= 1
+  }
+  ^ ""
+}
+
+@type_shorthand(word:s)->b {
+  ^ in_list(word, ["i", "f", "s", "b", "B", "A", "N"])
+}
+
+@looks_like_type_start(code:s, i:i)->b {
+  j = next_nonspace(code, i)
+  n = #code
+  ? j >= n {
+    ^ F
+  }
+  ch = code[j]
+  ? in_text(ch, "ifsbBAN") {
+    ^ T
+  }
+  ? ch == "[" || ch == "(" || ch == "{" {
+    ^ T
+  }
+  ? ch >= "A" && ch <= "Z" {
+    ^ T
+  }
+  ^ F
+}
+
+@scan_type(code:s, i:i, stop:s)->A {
+  out = []
+  n = #code
+  depth = 0
+  seen = F
+  %? i < n {
+    ch = code[i]
+    ? is_space(ch) {
+      out.append(["ws", ch])
+      i += 1
+      ^>
+    }
+    ? ch == "\n" && depth == 0 {
+      ^!
+    }
+    ? ch == "[" || ch == "(" {
+      out.append(["punc", ch])
+      depth += 1
+      seen = T
+      i += 1
+      ^>
+    }
+    ? ch == "{" {
+      ? depth > 0 {
+        out.append(["punc", ch])
+        depth += 1
+        seen = T
+        i += 1
+        ^>
+      }
+      ? !seen {
+        out.append(["punc", ch])
+        depth += 1
+        seen = T
+        i += 1
+        ^>
+      }
+      ^!
+    }
+    ? ch == "]" || ch == ")" || ch == "}" {
+      ? depth > 0 {
+        out.append(["punc", ch])
+        depth -= 1
+        i += 1
+        ^>
+      }
+      ^!
+    }
+    ? depth == 0 && in_text(ch, stop) {
+      ^!
+    }
+    ? ch == "-" && i + 1 < n && code[i + 1] == ">" {
+      out.append(["type", "->"])
+      seen = T
+      i += 2
+      ^>
+    }
+    ? is_id_start(ch) {
+      j = identifier_end(code, i)
+      word = code[i:j]
+      ? type_shorthand(word) {
+        out.append(["type", word])
+      } :? word > "" && word[0] >= "A" && word[0] <= "Z" {
+        out.append(["cls", word])
+      } : {
+        out.append(["id", word])
+      }
+      seen = T
+      i = j
+      ^>
+    }
+    ? is_digit(ch) {
+      j = scan_number_end(code, i)
+      out.append(["num", code[i:j]])
+      seen = T
+      i = j
+      ^>
+    }
+    ? in_text(ch, "?,.|*") {
+      ? ch == "|" || ch == "*" {
+        out.append(["op", ch])
+      } : {
+        out.append(["punc", ch])
+      }
+      seen = T
+      i += 1
+      ^>
+    }
+    ^!
+  }
+  ^ [out, i]
+}
+
+@scan_decl_name(code:s, i:i, kind:s)->A {
+  out = []
+  n = #code
+  j = i
+  %? j < n && is_space(code[j]) {
+    out.append(["ws", code[j]])
+    j += 1
+  }
+  ? j < n && is_id_start(code[j]) {
+    k = identifier_end(code, j)
+    out.append([kind, code[j:k]])
+    j = k
+  }
+  ^ [out, j]
+}
+
+@scan_import(code:s, i:i)->A {
+  n = #code
+  j = i + 1
+  dots = ""
+  %? j < n && code[j] == "." {
+    dots += "."
+    j += 1
+  }
+  out = []
+  ? dots != "" {
+    out.append(["imp", "<" + dots])
+  } : {
+    out.append(["imp", "<"])
+  }
+  ^ [out, j]
+}
+
+@scan_alias(code:s, i:i)->A {
+  out = [["decl", "$="]]
+  n = #code
+  j = i + 2
+  %? j < n && is_space(code[j]) {
+    out.append(["ws", code[j]])
+    j += 1
+  }
+  ? j < n && is_id_start(code[j]) {
+    k = identifier_end(code, j)
+    out.append(["cls", code[j:k]])
+    j = k
+  }
+  %? j < n && is_space(code[j]) {
+    out.append(["ws", code[j]])
+    j += 1
+  }
+  ? j < n && code[j] == "=" {
+    out.append(["op", "="])
+    j += 1
+    typed = scan_type(code, j, "\n;}")
+    % t <- typed[0] {
+      out.append(t)
+    }
+    j = typed[1]
+  }
+  ^ [out, j]
+}
+
+@scan_template(code:s, start:i)->A {
+  out = []
+  n = #code
+  i = start
+  buf = ""
+  out.append(["str", "`"])
+  i += 1
+  %? i < n {
+    ch = code[i]
+    ? ch == "\\" && i + 1 < n {
+      buf += code[i:i + 2]
+      i += 2
+      ^>
+    }
+    ? ch == "`" {
+      ? buf != "" {
+        out.append(["str", buf])
+      }
+      out.append(["str", "`"])
+      ^ [out, i + 1]
+    }
+    ? ch == "{" {
+      ? i + 1 < n && code[i + 1] == "{" {
+        buf += "{{"
+        i += 2
+        ^>
+      }
+      end = find_field_end(code, i + 1)
+      ? end < 0 {
+        buf += code[i:]
+        i = n
+        ^!
+      }
+      ? buf != "" {
+        out.append(["str", buf])
+        buf = ""
+      }
+      out.append(["interp", "{"])
+      spec = find_spec_colon(code, i + 1, end)
+      expr_end = end
+      ? spec >= 0 {
+        expr_end = spec
+      }
+      inner = scan_from(code[i + 1:expr_end], F)
+      % token <- inner {
+        out.append(token)
+      }
+      ? spec >= 0 {
+        out.append(["interp", code[spec:end]])
+      }
+      out.append(["interp", "}"])
+      i = end + 1
+      ^>
+    }
+    ? ch == "}" && i + 1 < n && code[i + 1] == "}" {
+      buf += "}}"
+      i += 2
+      ^>
+    }
+    buf += ch
+    i += 1
+  }
+  ? buf != "" {
+    out.append(["str", buf])
+  }
+  ^ [out, i]
+}
+
+@skip_quoted(code:s, i:i)->i {
+  ^ scan_string_end(code, i)
+}
+
+@skip_backtick(code:s, i:i)->i {
+  n = #code
+  j = i + 1
+  %? j < n {
+    ? code[j] == "\\" {
+      j += 2
+      ^>
+    }
+    ? code[j] == "`" {
+      ^ j + 1
+    }
+    j += 1
+  }
+  ^ n
+}
+
+@find_field_end(code:s, start:i)->i {
+  n = #code
+  depth = 1
+  i = start
+  %? i < n {
+    ch = code[i]
+    ? ch == "\\" {
+      i += 2
+      ^>
+    }
+    ? ch == '"' || ch == "'" {
+      i = skip_quoted(code, i)
+      ^>
+    }
+    ? ch == "`" {
+      i = skip_backtick(code, i)
+      ^>
+    }
+    ? ch == "{" {
+      depth += 1
+    } :? ch == "}" {
+      depth -= 1
+      ? depth == 0 {
+        ^ i
+      }
+    }
+    i += 1
+  }
+  ^ -1
+}
+
+@find_spec_colon(code:s, start:i, end:i)->i {
+  i = start
+  par = 0
+  bra = 0
+  brace = 0
+  qmark = F
+  %? i < end {
+    ch = code[i]
+    ? ch == '"' || ch == "'" {
+      i = skip_quoted(code, i)
+      ^>
+    }
+    ? ch == "`" {
+      i = skip_backtick(code, i)
+      ^>
+    }
+    ? ch == "(" {
+      par += 1
+    } :? ch == ")" {
+      par -= 1
+    } :? ch == "[" {
+      bra += 1
+    } :? ch == "]" {
+      bra -= 1
+    } :? ch == "{" {
+      brace += 1
+    } :? ch == "}" {
+      brace -= 1
+    }
+    ? par == 0 && bra == 0 && brace == 0 {
+      ? ch == "?" {
+        ? i + 1 < end && code[i + 1] == "?" {
+          i += 1
+        } :? i + 1 < end && code[i + 1] == "." {
+          i += 1
+        } : {
+          qmark = T
+        }
+      } :? ch == ":" && !qmark {
+        ^ i
+      }
+    }
+    i += 1
+  }
+  ^ -1
+}
+
+@scan_from(code:s, stmt0:b=T)->[A] {
+  out = []
+  n = #code
+  i = 0
+  stmt = stmt0
+  paren = 0
+  bracket = 0
+  param_level = -1
+  expect_params = F
+  ternary = 0
+  loop_header = F
+  in_import = F
+  prev = ""
+
+  %? i < n {
+    ch = code[i]
+
+    ? ch == " " || ch == "\t" || ch == "\r" {
+      j = i + 1
+      %? j < n && (code[j] == " " || code[j] == "\t" || code[j] == "\r") {
+        j += 1
+      }
+      out.append(["ws", code[i:j]])
+      i = j
+      ^>
+    }
+
+    ? ch == "\n" {
+      out.append(["ws", "\n"])
+      i += 1
+      ? paren == 0 {
+        stmt = T
+        loop_header = F
+        in_import = F
+        ternary = 0
+        expect_params = F
+        param_level = -1
+      }
+      ^>
+    }
+
+    ? ch == "#" && is_comment_start(code, i, stmt) {
+      j = i
+      %? j < n && code[j] != "\n" {
+        j += 1
+      }
+      out.append(["com", code[i:j]])
+      i = j
+      ^>
+    }
+
+    ? ch == "_" && i + 1 < n && (code[i + 1] == '"' || code[i + 1] == "'") {
+      end = scan_string_end(code, i + 1)
+      out.append(["str", code[i:end]])
+      i = end
+      stmt = F
+      prev = "str"
+      ^>
+    }
+
+    ? ch == "0" && i + 2 < n && (code[i + 1] == "b" || code[i + 1] == "B") && (code[i + 2] == '"' || code[i + 2] == "'") {
+      end = scan_string_end(code, i + 2)
+      out.append(["str", code[i:end]])
+      i = end
+      stmt = F
+      prev = "str"
+      ^>
+    }
+
+    ? ch == '"' || ch == "'" {
+      end = scan_string_end(code, i)
+      out.append(["str", code[i:end]])
+      i = end
+      stmt = F
+      prev = "str"
+      ^>
+    }
+
+    ? ch == "`" {
+      templ = scan_template(code, i)
+      % token <- templ[0] {
+        out.append(token)
+      }
+      i = templ[1]
+      stmt = F
+      prev = "str"
+      ^>
+    }
+
+    ? is_digit(ch) {
+      end = scan_number_end(code, i)
+      out.append(["num", code[i:end]])
+      i = end
+      stmt = F
+      prev = "num"
+      ^>
+    }
+
+    ? is_id_start(ch) {
+      end = identifier_end(code, i)
+      word = code[i:end]
+      kind = "id"
+      ? in_list(word, ["T", "F", "N", "U"]) {
+        kind = "const"
+      } :? word == "p" {
+        kind = "bi"
+      } :? word == "self" || word == "cls" {
+        kind = "self"
+      }
+      out.append([kind, word])
+      i = end
+      stmt = F
+      prev = word
+      ^>
+    }
+
+    ? ch == "." {
+      ? i + 1 < n && code[i + 1] == "." {
+        ? i + 2 < n && code[i + 2] == "." {
+          out.append(["op", "..."])
+          i += 3
+        } :? is_super_dot(code, i) {
+          out.append(["self", ".."])
+          i += 2
+          ? i < n && is_id_start(code[i]) {
+            end = identifier_end(code, i)
+            out.append(["self", code[i:end]])
+            i = end
+          }
+        } : {
+          out.append(["op", ".."])
+          i += 2
+        }
+      } : {
+        ? (stmt || can_start_expr(prev)) && i + 1 < n && is_id_start(code[i + 1]) {
+          out.append(["self", "."])
+          i += 1
+          end = identifier_end(code, i)
+          out.append(["self", code[i:end]])
+          i = end
+        } : {
+          out.append(["punc", "."])
+          i += 1
+        }
+      }
+      stmt = F
+      prev = "self"
+      ^>
+    }
+
+    ? ch == "@" {
+      builtin = match_builtin(code, i)
+      ? builtin[0] {
+        out.append(["bi", builtin[1]])
+        i += #builtin[1]
+        stmt = F
+        prev = builtin[1]
+        ^>
+      }
+      ? i + 5 <= n && code[i:i + 5] == "@main" {
+        after = i + 5
+        ? after >= n || !is_id_cont(code[after]) {
+          out.append(["imp", "@main"])
+          i = after
+          stmt = F
+          prev = "@main"
+          ^>
+        }
+      }
+      ? i + 7 <= n && code[i:i + 7] == "@target" {
+        after = i + 7
+        ? after >= n || !is_id_cont(code[after]) {
+          out.append(["imp", "@target"])
+          i = after
+          stmt = F
+          prev = "@target"
+          ^>
+        }
+      }
+      ? i + 2 <= n && code[i:i + 2] == "@=" {
+        j = next_nonspace(code, i + 2)
+        is_setter = F
+        ? j < n && is_id_start(code[j]) {
+          k = next_nonspace(code, identifier_end(code, j))
+          ? k < n && code[k] == "(" {
+            is_setter = T
+          }
+        }
+        ? stmt && is_setter {
+          out.append(["decl", "@="])
+          named = scan_decl_name(code, i + 2, "fn")
+          % token <- named[0] {
+            out.append(token)
+          }
+          i = named[1]
+          expect_params = params_follow(code, i)
+        } : {
+          out.append(["decl", "@="])
+          i += 2
+        }
+        stmt = F
+        prev = "@="
+        ^>
+      }
+      ? i + 2 <= n && in_list(code[i:i + 2], ["@/", "@$", "@?"]) {
+        sig = code[i:i + 2]
+        ? stmt {
+          out.append(["decl", sig])
+          named = scan_decl_name(code, i + 2, "fn")
+          % token <- named[0] {
+            out.append(token)
+          }
+          i = named[1]
+          expect_params = params_follow(code, i)
+        } : {
+          out.append(["op", sig])
+          i += 2
+        }
+        stmt = F
+        prev = sig
+        ^>
+      }
+      ? stmt {
+        out.append(["decl", "@"])
+        named = scan_decl_name(code, i + 1, "fn")
+        % token <- named[0] {
+          out.append(token)
+        }
+        i = named[1]
+        expect_params = params_follow(code, i)
+        stmt = F
+        prev = "@"
+        ^>
+      }
+      out.append(["op", "@"])
+      i += 1
+      stmt = F
+      prev = "@"
+      ^>
+    }
+
+    ? ch == "$" {
+      ? i + 2 <= n && code[i:i + 2] == "$$" {
+        ? stmt {
+          out.append(["decl", "$$"])
+          named = scan_decl_name(code, i + 2, "cls")
+          % token <- named[0] {
+            out.append(token)
+          }
+          i = named[1]
+          expect_params = params_follow(code, i)
+        } : {
+          out.append(["op", "$$"])
+          i += 2
+        }
+        stmt = F
+        prev = "$$"
+        ^>
+      }
+      ? i + 2 <= n && code[i:i + 2] == "$=" {
+        ? stmt {
+          alias = scan_alias(code, i)
+          % token <- alias[0] {
+            out.append(token)
+          }
+          i = alias[1]
+        } : {
+          out.append(["op", "$="])
+          i += 2
+        }
+        stmt = F
+        prev = "$="
+        ^>
+      }
+      ? stmt {
+        out.append(["decl", "$"])
+        named = scan_decl_name(code, i + 1, "cls")
+        % token <- named[0] {
+          out.append(token)
+        }
+        i = named[1]
+        expect_params = params_follow(code, i)
+        stmt = F
+        prev = "$"
+        ^>
+      }
+      ? i + 2 <= n && code[i:i + 2] == "$?" {
+        out.append(["op", "$?"])
+        i += 2
+      } : {
+        out.append(["op", "$"])
+        i += 1
+      }
+      stmt = F
+      prev = "$"
+      ^>
+    }
+
+    ? ch == "%" {
+      sig = "%"
+      ? i + 2 <= n && in_list(code[i:i + 2], ["%:", "%?", "%~"]) {
+        sig = code[i:i + 2]
+      }
+      ? i + 2 <= n && code[i:i + 2] == "%=" {
+        out.append(["op", "%="])
+        i += 2
+        stmt = F
+        prev = "%="
+        ^>
+      }
+      ? stmt {
+        out.append(["kw", sig])
+        i += #sig
+        ? sig == "%:" {
+          loop_header = F
+        } : {
+          loop_header = T
+        }
+        stmt = F
+        prev = sig
+        ^>
+      }
+      out.append(["op", sig])
+      i += #sig
+      stmt = F
+      prev = sig
+      ^>
+    }
+
+    ? ch == "^" {
+      sig = "^"
+      ? i + 3 <= n && code[i:i + 3] == "^**" {
+        sig = "^**"
+      } :? i + 2 <= n && in_list(code[i:i + 2], ["^*", "^!", "^>", "^="]) {
+        sig = code[i:i + 2]
+      }
+      ? stmt {
+        out.append(["kw", sig])
+      } : {
+        out.append(["op", sig])
+      }
+      i += #sig
+      stmt = F
+      prev = sig
+      ^>
+    }
+
+    ? ch == "!" {
+      ? i + 3 <= n && in_list(code[i:i + 3], ["!<-", "!~&"]) {
+        sig = code[i:i + 3]
+        ? stmt {
+          out.append(["kw", sig])
+        } : {
+          out.append(["op", sig])
+        }
+        i += 3
+        stmt = F
+        prev = sig
+        ^>
+      }
+      ? i + 4 <= n && code[i:i + 4] == "!===" {
+        out.append(["op", "!==="])
+        i += 4
+        stmt = F
+        prev = "!==="
+        ^>
+      }
+      ? i + 3 <= n && code[i:i + 3] == "!==" {
+        out.append(["op", "!=="])
+        i += 3
+        stmt = F
+        prev = "!=="
+        ^>
+      }
+      ? i + 2 <= n && in_list(code[i:i + 2], ["!!", "!:", "!^", "!?", "!&"]) {
+        sig = code[i:i + 2]
+        ? stmt {
+          out.append(["kw", sig])
+        } : {
+          out.append(["op", sig])
+        }
+        i += 2
+        stmt = F
+        prev = sig
+        ^>
+      }
+      ? i + 2 <= n && code[i:i + 2] == "!=" {
+        out.append(["op", "!="])
+        i += 2
+        stmt = F
+        prev = "!="
+        ^>
+      }
+      ? stmt && next_nonspace(code, i + 1) < n && code[next_nonspace(code, i + 1)] == "{" {
+        out.append(["kw", "!"])
+        i += 1
+        stmt = F
+        prev = "!"
+        ^>
+      }
+      out.append(["op", "!"])
+      i += 1
+      stmt = F
+      prev = "!"
+      ^>
+    }
+
+    ? ch == "<" {
+      ? i + 2 <= n && code[i:i + 2] == "<-" {
+        ? loop_header {
+          out.append(["kw", "<-"])
+        } : {
+          out.append(["op", "<-"])
+        }
+        i += 2
+        stmt = F
+        prev = "<-"
+        ^>
+      }
+      ? i + 3 <= n && code[i:i + 3] == "<<=" {
+        out.append(["op", "<<="])
+        i += 3
+        stmt = F
+        prev = "<<="
+        ^>
+      }
+      ? i + 2 <= n && in_list(code[i:i + 2], ["<<", "<="]) {
+        sig = code[i:i + 2]
+        out.append(["op", sig])
+        i += 2
+        stmt = F
+        prev = sig
+        ^>
+      }
+      ? stmt {
+        imported = scan_import(code, i)
+        % token <- imported[0] {
+          out.append(token)
+        }
+        i = imported[1]
+        stmt = F
+        in_import = T
+        prev = "<"
+        ^>
+      }
+      out.append(["op", "<"])
+      i += 1
+      stmt = F
+      prev = "<"
+      ^>
+    }
+
+    ? ch == ">" {
+      ? i + 3 <= n && code[i:i + 3] == ">>=" {
+        out.append(["op", ">>="])
+        i += 3
+      } :? i + 2 <= n && in_list(code[i:i + 2], [">>", ">="]) {
+        out.append(["op", code[i:i + 2]])
+        i += 2
+      } : {
+        out.append(["op", ">"])
+        i += 1
+      }
+      stmt = F
+      prev = ">"
+      ^>
+    }
+
+    ? ch == "=" {
+      ? i + 2 <= n && code[i:i + 2] == "=>" {
+        out.append(["kw", "=>"])
+        i += 2
+        stmt = T
+        ternary = 0
+        expect_params = F
+        prev = "=>"
+        ^>
+      }
+      ? i + 3 <= n && code[i:i + 3] == "===" {
+        out.append(["op", "==="])
+        i += 3
+      } :? i + 2 <= n && code[i:i + 2] == "==" {
+        out.append(["op", "=="])
+        i += 2
+      } : {
+        out.append(["op", "="])
+        i += 1
+      }
+      stmt = F
+      prev = "="
+      ^>
+    }
+
+    ? ch == ":" {
+      colon_at = i
+      before_kind = last_kind(out)
+      before_text = last_text(out)
+      ? i + 2 <= n && code[i:i + 2] == ":?" {
+        ? stmt {
+          out.append(["kw", ":?"])
+          i += 2
+          stmt = F
+        } : {
+          out.append(["op", ":?"])
+          i += 2
+          typed = scan_type(code, i, "{}\n;,)|&")
+          % token <- typed[0] {
+            out.append(token)
+          }
+          i = typed[1]
+          stmt = F
+          prev = "type"
+        }
+        ^>
+      }
+      ? i + 2 <= n && code[i:i + 2] == ":=" {
+        out.append(["op", ":="])
+        i += 2
+        stmt = F
+        prev = ":="
+        ^>
+      }
+      ? !stmt && ternary > 0 {
+        out.append(["punc", ":"])
+        i += 1
+        ternary -= 1
+        stmt = F
+        prev = ":"
+        ^>
+      }
+      ? stmt {
+        out.append(["kw", ":"])
+        i += 1
+        stmt = F
+        prev = ":"
+        ^>
+      }
+      out.append(["punc", ":"])
+      i += 1
+      adjacent = colon_at > 0 && !is_space(code[colon_at - 1])
+      ann_context = before_kind == "id" || before_kind == "type" || before_kind == "cls" || before_text == ")" || before_text == "]"
+      in_params = param_level >= 0 && paren == param_level
+      at_block_level = paren == 0 && bracket == 0
+      ? !in_import && adjacent && ann_context && (in_params || at_block_level) && looks_like_type_start(code, i) {
+        typed = scan_type(code, i, "=,)\n;}")
+        after = next_nonspace(code, typed[1])
+        after_ch = ""
+        ? after < n {
+          after_ch = code[after]
+        }
+        ? after_ch == "}" || after_ch == "]" {
+          # Dictionary value or slice: keep the text as normal expression.
+        } : {
+          % token <- typed[0] {
+            out.append(token)
+          }
+          i = typed[1]
+          prev = "type"
+        }
+      }
+      stmt = F
+      ^>
+    }
+
+    ? ch == "?" {
+      ? i + 2 <= n && code[i:i + 2] == "??" {
+        ? stmt {
+          out.append(["kw", "??"])
+        } : {
+          out.append(["op", "??"])
+        }
+        i += 2
+      } :? i + 2 <= n && code[i:i + 2] == "?." {
+        ? stmt {
+          out.append(["kw", "?."])
+        } : {
+          out.append(["op", "?."])
+        }
+        i += 2
+      } : {
+        ? stmt {
+          out.append(["kw", "?"])
+        } : {
+          out.append(["op", "?"])
+          ternary += 1
+        }
+        i += 1
+      }
+      stmt = F
+      prev = "?"
+      ^>
+    }
+
+    ? ch == "#" {
+      ? i + 2 <= n && code[i:i + 2] == "#[" {
+        ? stmt {
+          out.append(["dec", "#["])
+        } : {
+          out.append(["op", "#"])
+          i += 1
+          ^>
+        }
+        i += 2
+        stmt = F
+        prev = "#["
+        ^>
+      }
+      out.append(["op", "#"])
+      i += 1
+      stmt = F
+      prev = "#"
+      ^>
+    }
+
+    ? ch == "~" {
+      ? i + 3 <= n && code[i:i + 3] == "~*@" {
+        ? stmt {
+          out.append(["decl", "~*@"])
+          named = scan_decl_name(code, i + 3, "fn")
+          % token <- named[0] {
+            out.append(token)
+          }
+          i = named[1]
+          expect_params = params_follow(code, i)
+          stmt = F
+          prev = "~*@"
+        } : {
+          out.append(["op", "~"])
+          i += 1
+          stmt = F
+          prev = "~"
+        }
+        ^>
+      }
+      ? i + 2 <= n && code[i:i + 2] == "~@" {
+        ? stmt {
+          out.append(["decl", "~@"])
+          named = scan_decl_name(code, i + 2, "fn")
+          % token <- named[0] {
+            out.append(token)
+          }
+          i = named[1]
+          expect_params = params_follow(code, i)
+          stmt = F
+          prev = "~@"
+        } : {
+          out.append(["op", "~"])
+          i += 1
+          stmt = F
+          prev = "~"
+        }
+        ^>
+      }
+      ? i + 2 <= n && code[i:i + 2] == "~|" {
+        out.append(["op", "~|"])
+        i += 2
+        stmt = F
+        prev = "~|"
+        ^>
+      }
+      ? stmt {
+        ? is_await_call(code, i) {
+          out.append(["op", "~"])
+        } : {
+          out.append(["kw", "~"])
+        }
+        i += 1
+        stmt = F
+        prev = "~"
+        ^>
+      }
+      out.append(["op", "~"])
+      i += 1
+      stmt = F
+      prev = "~"
+      ^>
+    }
+
+    ? ch == "*" {
+      ? i + 2 <= n && code[i:i + 2] == "*@" {
+        ? stmt {
+          out.append(["decl", "*@"])
+          named = scan_decl_name(code, i + 2, "fn")
+          % token <- named[0] {
+            out.append(token)
+          }
+          i = named[1]
+          expect_params = params_follow(code, i)
+        } : {
+          out.append(["op", "*"])
+          i += 1
+        }
+        stmt = F
+        prev = "*@"
+        ^>
+      }
+      ? i + 3 <= n && code[i:i + 3] == "**=" {
+        out.append(["op", "**="])
+        i += 3
+      } :? i + 3 <= n && code[i:i + 3] == "//=" {
+        out.append(["op", "//="])
+        i += 3
+      } :? i + 2 <= n && code[i:i + 2] == "**" {
+        out.append(["op", "**"])
+        i += 2
+      } :? i + 2 <= n && code[i:i + 2] == "*=" {
+        out.append(["op", "*="])
+        i += 2
+      } : {
+        out.append(["op", "*"])
+        i += 1
+      }
+      stmt = F
+      prev = "*"
+      ^>
+    }
+
+    ? ch == "+" {
+      ? i + 2 <= n && in_list(code[i:i + 2], ["+@", "+$"]) {
+        sig = code[i:i + 2]
+        name_kind = "fn"
+        ? sig == "+$" {
+          name_kind = "cls"
+        }
+        ? stmt {
+          out.append(["decl", sig])
+          named = scan_decl_name(code, i + 2, name_kind)
+          % token <- named[0] {
+            out.append(token)
+          }
+          i = named[1]
+          expect_params = params_follow(code, i)
+        } : {
+          out.append(["op", "+"])
+          i += 1
+        }
+        stmt = F
+        prev = sig
+        ^>
+      }
+      ? i + 2 <= n && code[i:i + 2] == "+=" {
+        out.append(["op", "+="])
+        i += 2
+      } : {
+        out.append(["op", "+"])
+        i += 1
+      }
+      stmt = F
+      prev = "+"
+      ^>
+    }
+
+    ? ch == "-" {
+      ? i + 2 <= n && code[i:i + 2] == "->" {
+        out.append(["type", "->"])
+        i += 2
+        typed = scan_type(code, i, "{=,\n;)")
+        % token <- typed[0] {
+          out.append(token)
+        }
+        i = typed[1]
+        stmt = F
+        prev = "type"
+        ^>
+      }
+      ? i + 2 <= n && code[i:i + 2] == "-=" {
+        out.append(["op", "-="])
+        i += 2
+      } : {
+        out.append(["op", "-"])
+        i += 1
+      }
+      stmt = F
+      prev = "-"
+      ^>
+    }
+
+    ? ch == "/" {
+      ? i + 3 <= n && code[i:i + 3] == "//=" {
+        out.append(["op", "//="])
+        i += 3
+      } :? i + 2 <= n && code[i:i + 2] == "//" {
+        out.append(["op", "//"])
+        i += 2
+      } :? i + 2 <= n && code[i:i + 2] == "/=" {
+        out.append(["op", "/="])
+        i += 2
+      } : {
+        out.append(["op", "/"])
+        i += 1
+      }
+      stmt = F
+      prev = "/"
+      ^>
+    }
+
+    ? ch == "&" {
+      ? i + 2 <= n && code[i:i + 2] == "&&" {
+        out.append(["op", "&&"])
+        i += 2
+      } :? i + 2 <= n && code[i:i + 2] == "&=" {
+        out.append(["op", "&="])
+        i += 2
+      } : {
+        out.append(["op", "&"])
+        i += 1
+      }
+      stmt = F
+      prev = "&"
+      ^>
+    }
+
+    ? ch == "|" {
+      ? i + 2 <= n && code[i:i + 2] == "||" {
+        out.append(["op", "||"])
+        i += 2
+      } :? i + 2 <= n && code[i:i + 2] == "|>" {
+        out.append(["op", "|>"])
+        i += 2
+      } :? i + 2 <= n && code[i:i + 2] == "|=" {
+        out.append(["op", "|="])
+        i += 2
+      } : {
+        out.append(["op", "|"])
+        i += 1
+      }
+      stmt = F
+      prev = "|"
+      ^>
+    }
+
+    ? ch == "(" {
+      out.append(["punc", "("])
+      i += 1
+      paren += 1
+      ? expect_params {
+        param_level = paren
+        expect_params = F
+      }
+      stmt = F
+      prev = "("
+      ^>
+    }
+
+    ? ch == ")" {
+      out.append(["punc", ")"])
+      i += 1
+      paren -= 1
+      ? paren < 0 {
+        paren = 0
+      }
+      ? param_level >= 0 && paren < param_level {
+        param_level = -1
+      }
+      stmt = F
+      prev = ")"
+      ^>
+    }
+
+    ? ch == "[" {
+      out.append(["punc", "["])
+      i += 1
+      paren += 1
+      bracket += 1
+      stmt = F
+      prev = "["
+      ^>
+    }
+
+    ? ch == "]" {
+      out.append(["punc", "]"])
+      i += 1
+      paren -= 1
+      ? paren < 0 {
+        paren = 0
+      }
+      bracket -= 1
+      ? bracket < 0 {
+        bracket = 0
+      }
+      stmt = F
+      prev = "]"
+      ^>
+    }
+
+    ? ch == "{" {
+      out.append(["punc", "{"])
+      i += 1
+      stmt = T
+      loop_header = F
+      expect_params = F
+      prev = "{"
+      ^>
+    }
+
+    ? ch == "}" {
+      out.append(["punc", "}"])
+      i += 1
+      stmt = T
+      loop_header = F
+      prev = "}"
+      ^>
+    }
+
+    ? ch == "," {
+      out.append(["punc", ","])
+      i += 1
+      stmt = F
+      prev = ","
+      ^>
+    }
+
+    ? ch == ";" {
+      out.append(["punc", ";"])
+      i += 1
+      stmt = T
+      loop_header = F
+      in_import = F
+      ternary = 0
+      expect_params = F
+      prev = ";"
+      ^>
+    }
+
+    ? ch == "\\" && i + 1 < n && code[i + 1] == "\n" {
+      out.append(["ws", "\\\n"])
+      i += 2
+      ^>
+    }
+
+    # Unknown character: emit it as plain text. Highlighting must never crash
+    # or drop bytes.
+    out.append(["text", ch])
+    i += 1
+    stmt = F
+    prev = ch
+  }
+
+  ^ out
+}

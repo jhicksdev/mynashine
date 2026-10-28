@@ -1,0 +1,18 @@
+@target(py)
+<sys
+<.test_myna_lexer:{run_myna_lexer_tests}
+
+@main {
+  p("MynaShine test suite")
+  p("====================")
+  total_p = 0
+  total_f = 0
+  a = run_myna_lexer_tests()
+  total_p += a[0]
+  total_f += a[1]
+  p("====================")
+  p(`TOTAL: {total_p} passed, {total_f} failed`)
+  ? total_f > 0 {
+    sys.exit(1)
+  }
+}

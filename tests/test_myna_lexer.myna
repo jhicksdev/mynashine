@@ -1,0 +1,185 @@
+@target(py)
+<.harness:{new_results, eq_i, eq_s, eq_b, check, contains, kind_nth, kind_in, count_text, lossless, summary, note}
+<.src.myna_lexer:{scan_myna}
+
+@run_myna_lexer_tests()->[i] {
+  r = new_results()
+
+  # ? if vs ternary
+  t = scan_myna("? cond { ^1 }")
+  eq_s(r, kind_nth(t, "?", 0), "kw", "? if is a keyword")
+  t = scan_myna("x = c ? a : b")
+  eq_s(r, kind_nth(t, "?", 0), "op", "? ternary is an operator")
+  eq_s(r, kind_nth(t, ":", 0), "punc", "ternary colon is punctuation")
+
+  # :? elif vs runtime type check
+  t = scan_myna("? a { } :? b { } : { }")
+  eq_s(r, kind_nth(t, ":?", 0), "kw", ":? elif is a keyword")
+  eq_s(r, kind_nth(t, ":", 0), "kw", "bare else colon is a keyword")
+  t = scan_myna("ok = x :? [s]")
+  eq_s(r, kind_nth(t, ":?", 0), "op", ":? type check is an operator")
+  eq_s(r, kind_nth(t, "s", 0), "type", "s inside [s] is a type")
+
+  # ?? match vs nullish coalescing
+  t = scan_myna("?? v { 0 => { ^\"zero\" }; _ => { ^\"other\" } }")
+  eq_s(r, kind_nth(t, "??", 0), "kw", "?? match is a keyword")
+  eq_s(r, kind_in(t, "=>", "kw"), T, "match arrows are keywords")
+  t = scan_myna("v = a ?? b")
+  eq_s(r, kind_nth(t, "??", 0), "op", "?? nullish is an operator")
+
+  # % for / modulo / comprehension / loop variants
+  t = scan_myna("% i, x <- items { p(x) }")
+  eq_s(r, kind_nth(t, "%", 0), "kw", "% for is a keyword")
+  eq_s(r, kind_nth(t, "<-", 0), "kw", "<- in a loop header is a keyword")
+  t = scan_myna("y = x % 2")
+  eq_s(r, kind_nth(t, "%", 0), "op", "% modulo is an operator")
+  t = scan_myna("[v | v <- xs % w <- ys]")
+  eq_s(r, kind_nth(t, "%", 0), "op", "% comprehension clause is an operator")
+  eq_s(r, kind_nth(t, "<-", 0), "op", "<- in a comprehension is an operator")
+  t = scan_myna("%~ x <- it { }")
+  eq_s(r, kind_nth(t, "%~", 0), "kw", "%~ async for is a keyword")
+  t = scan_myna("%? cond { }")
+  eq_s(r, kind_nth(t, "%?", 0), "kw", "%? while is a keyword")
+  t = scan_myna("% x <- xs { } %: { }")
+  eq_s(r, kind_nth(t, "%:", 0), "kw", "%: loop else is a keyword")
+
+  # ^ return / XOR / nonlocal / yield / break / continue
+  t = scan_myna("^value")
+  eq_s(r, kind_nth(t, "^", 0), "kw", "^ return is a keyword")
+  t = scan_myna("z = a ^ b")
+  eq_s(r, kind_nth(t, "^", 0), "op", "^ XOR is an operator")
+  t = scan_myna("^= x")
+  eq_s(r, kind_nth(t, "^=", 0), "kw", "^= nonlocal is a keyword")
+  t = scan_myna("^*x")
+  eq_s(r, kind_nth(t, "^*", 0), "kw", "^* yield is a keyword")
+  t = scan_myna("^**xs")
+  eq_s(r, kind_nth(t, "^**", 0), "kw", "^** yield-from is a keyword")
+  t = scan_myna("^!")
+  eq_s(r, kind_nth(t, "^!", 0), "kw", "^! break is a keyword")
+  t = scan_myna("^>")
+  eq_s(r, kind_nth(t, "^>", 0), "kw", "^> continue is a keyword")
+
+  # ! try family vs not
+  t = scan_myna("!{ ^1 } !! e:ValueError { } !? { } !: { } !^Err(\"x\")")
+  eq_s(r, kind_nth(t, "!", 0), "kw", "! try is a keyword")
+  eq_s(r, kind_nth(t, "!!", 0), "kw", "!! except is a keyword")
+  eq_s(r, kind_nth(t, "!?", 0), "kw", "!? try-else is a keyword")
+  eq_s(r, kind_nth(t, "!:", 0), "kw", "!: finally is a keyword")
+  eq_s(r, kind_nth(t, "!^", 0), "kw", "!^ raise is a keyword")
+  t = scan_myna("!x")
+  eq_s(r, kind_nth(t, "!", 0), "op", "! not is an operator")
+  t = scan_myna("a != b")
+  eq_s(r, kind_nth(t, "!=", 0), "op", "!= is an operator")
+  t = scan_myna("!& f = open(p) { }")
+  eq_s(r, kind_nth(t, "!&", 0), "kw", "!& with is a keyword")
+
+  # < import vs comparison / inheritance
+  t = scan_myna("<re, os")
+  eq_s(r, kind_nth(t, "<", 0), "imp", "< import is an import token")
+  t = scan_myna("<.util:{html_escape}")
+  eq_s(r, kind_nth(t, "<.", 0), "imp", "relative import is an import token")
+  t = scan_myna("? i < n { }")
+  eq_s(r, kind_nth(t, "<", 0), "op", "< comparison is an operator")
+  t = scan_myna("$C < B { }")
+  eq_s(r, kind_nth(t, "<", 0), "op", "< inheritance is an operator")
+
+  # # comment / len / decorator
+  t = scan_myna("# a comment")
+  eq_s(r, kind_nth(t, "# a comment", 0), "com", "# comment is a comment")
+  t = scan_myna("n = #xs")
+  eq_s(r, kind_nth(t, "#", 0), "op", "# length is an operator")
+  t = scan_myna("#[dec1, dec2(arg)]")
+  eq_s(r, kind_nth(t, "#[", 0), "dec", "#[ decorator is a decorator token")
+
+  # Type positions
+  t = scan_myna("@fn(i:i, s:s)->b { ^T }")
+  eq_s(r, kind_nth(t, "fn", 0), "fn", "function name is hl-fn")
+  eq_s(r, kind_nth(t, "i", 0), "id", "parameter i stays an identifier")
+  eq_s(r, kind_nth(t, "i", 1), "type", "annotation i becomes a type")
+  eq_s(r, kind_nth(t, "s", 0), "id", "parameter s stays an identifier")
+  eq_s(r, kind_nth(t, "s", 1), "type", "annotation s becomes a type")
+  eq_s(r, kind_nth(t, "b", 0), "type", "return b becomes a type")
+  eq_s(r, kind_nth(t, "->", 0), "type", "arrow is a type token")
+  t = scan_myna("i = 0")
+  eq_s(r, kind_nth(t, "i", 0), "id", "i as a local variable is not a type")
+  t = scan_myna("s = \"hello\"")
+  eq_s(r, kind_nth(t, "s", 0), "id", "s as a local variable is not a type")
+  t = scan_myna("x:i = 1")
+  eq_s(r, kind_nth(t, "i", 0), "type", "variable annotation i is a type")
+  t = scan_myna("v = a[i:s]")
+  eq_s(r, kind_nth(t, "s", 0), "id", "slice endpoint s is not a type")
+  t = scan_myna("f(x:i)")
+  eq_s(r, kind_nth(t, "i", 0), "id", "keyword argument value i is not a type")
+  t = scan_myna("c ? a:b")
+  eq_s(r, kind_nth(t, "b", 0), "id", "ternary arm b without spaces is not a type")
+  t = scan_myna("d = {x:i}")
+  eq_s(r, kind_nth(t, "i", 0), "id", "dict value i is not a type")
+  t = scan_myna("@f(a:i) { }")
+  eq_s(r, kind_nth(t, "i", 0), "type", "parameter annotation still works")
+
+  # Interpolation
+  t = scan_myna("f = `result: {x + 1:.2f}`")
+  eq_s(r, kind_nth(t, "`", 0), "str", "template backtick is a string")
+  eq_s(r, kind_nth(t, "{", 0), "interp", "interpolation opener")
+  eq_s(r, kind_nth(t, "x", 0), "id", "interpolated expression keeps normal tokens")
+  eq_s(r, kind_nth(t, "+", 0), "op", "interpolated operator")
+  eq_s(r, kind_nth(t, "1", 0), "num", "interpolated number")
+  eq_s(r, kind_nth(t, ":.2f", 0), "interp", "format spec is interpolation")
+  eq_s(r, kind_nth(t, "}", 0), "interp", "interpolation closer")
+  t = scan_myna('p(`[{status}] #{.id}: {.title}`)')
+  eq_s(r, kind_nth(t, ".", 0), "self", "self dot inside interpolation")
+  eq_s(r, kind_nth(t, "id", 0), "self", "self field inside interpolation")
+
+  # Declarations and classes
+  t = scan_myna("$$Page(id:i) { }")
+  eq_s(r, kind_nth(t, "$$", 0), "decl", "$$ dataclass declaration")
+  eq_s(r, kind_nth(t, "Page", 0), "cls", "dataclass name")
+  t = scan_myna("@render(x) { }")
+  eq_s(r, kind_nth(t, "@", 0), "decl", "@ function declaration")
+  eq_s(r, kind_nth(t, "render", 0), "fn", "function name after @")
+  t = scan_myna("~@process(x) { }")
+  eq_s(r, kind_nth(t, "~@", 0), "decl", "~@ async function declaration")
+  t = scan_myna("@?prop { ^._x }")
+  eq_s(r, kind_nth(t, "@?", 0), "decl", "@? property declaration")
+  eq_s(r, kind_nth(t, "prop", 0), "fn", "property name")
+  t = scan_myna("@/helper(x) { }")
+  eq_s(r, kind_nth(t, "@/", 0), "decl", "@/ static method declaration")
+  t = scan_myna("+$Service { }")
+  eq_s(r, kind_nth(t, "+$", 0), "decl", "+$ exported class")
+  eq_s(r, kind_nth(t, "Service", 0), "cls", "exported class name")
+  t = scan_myna("$= Alias = [Task]")
+  eq_s(r, kind_nth(t, "$=", 0), "decl", "$= type alias declaration")
+  eq_s(r, kind_nth(t, "Alias", 0), "cls", "type alias name")
+  eq_s(r, kind_nth(t, "Task", 0), "cls", "type alias compound type")
+
+  # Builtins, constants, self/super
+  t = scan_myna("xs = @map(f, items); p(T)")
+  eq_s(r, kind_nth(t, "@map", 0), "bi", "@map is a builtin")
+  eq_s(r, kind_nth(t, "p", 0), "bi", "p is a builtin")
+  eq_s(r, kind_nth(t, "T", 0), "const", "T is a constant")
+  t = scan_myna("@init(a) { .a = a; ..init() }")
+  eq_s(r, kind_nth(t, ".", 0), "self", "leading dot is self")
+  eq_s(r, kind_nth(t, "..", 0), "self", "leading double dot is super")
+  eq_i(r, count_text(t, "a"), 3, "self field and parameter preserved")
+
+  # Directives
+  t = scan_myna("@target(py, js)\n@main { }")
+  eq_s(r, kind_nth(t, "@target", 0), "imp", "@target is a module directive")
+  eq_s(r, kind_nth(t, "@main", 0), "imp", "@main is a module directive")
+
+  # Del / await
+  t = scan_myna("~x")
+  eq_s(r, kind_nth(t, "~", 0), "kw", "~x statement is del")
+  t = scan_myna("~f()")
+  eq_s(r, kind_nth(t, "~", 0), "op", "~f() is await")
+  t = scan_myna("~obj.method()")
+  eq_s(r, kind_nth(t, "~", 0), "op", "~obj.method() is await")
+
+  # Lossless smoke tests for tricky strings
+  lossless(r, "x = `a {b + c:.2f} d`\n", "myna", "template interpolation lossless")
+  lossless(r, "#[dec]\n$$C(x:i) { @init(x:i) { .x = x } }\n", "myna", "declarations lossless")
+  lossless(r, "!{ ^1 } !! e:ValueError { } !: { }\n", "myna", "try family lossless")
+
+  summary("myna lexer", r)
+  ^ r
+}
