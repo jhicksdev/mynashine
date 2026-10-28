@@ -1,0 +1,31 @@
+@target(py)
+<asyncio
+
+$$Task(id:i, title:s, done:b=F, weight:f=1.0) {
+  @summary->s {
+    mark = .done ? "x" : " "
+    ^ `[{mark}] #{.id} {.title} ({.weight:.1f})`
+  }
+}
+
+~@render(tasks:[Task])->[s] {
+  !{
+    ~asyncio.sleep(0.001)
+    active = [t | t <- tasks ? !t.done]
+    ^[t.summary() | t <- @srt(active, key=t => -t.weight)]
+  } !!e {
+    p(`render failed: {e}`)
+    ^[]
+  }
+}
+
+@main {
+  items = [
+    Task(1, "Scan Myna sigils", T, 3.0),
+    Task(2, "Merge token spans", F, 2.0),
+    Task(3, "Polish the demo", F, 1.5)
+  ]
+  % line <- asyncio.run(render(items)) {
+    p(line)
+  }
+}

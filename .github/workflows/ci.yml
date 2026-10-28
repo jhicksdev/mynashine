@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Myna
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "myna-lang>=0.4.2"
+
+      - name: Verify test module symlink
+        run: test -L tests/src
+
+      - name: Run Myna test suite
+        run: python -m myna run tests/run_tests.myna
+
+      - name: CLI smoke test
+        run: |
+          python -m myna run src/main.myna --version
+          python -m myna run src/main.myna code examples/demo.myna --lang myna > /tmp/mynashine-code.html
+          python -m myna run src/main.myna code examples/demo.myna --wrap --lines > /tmp/mynashine-block.html
+          python -m myna run src/main.myna css --theme mynapress > /tmp/mynashine.css
+          python -m myna run src/main.myna demo -o build/demo.html
+          test -s build/demo.html
+          test -s /tmp/mynashine-code.html
+          test -s /tmp/mynashine-block.html
+          test -s /tmp/mynashine.css
+
+      - name: Ensure no generated sources are tracked
+        run: |
+          if git ls-files '*.py' '*.js' | grep -q .; then
+            echo "Generated Python/JavaScript files must not be committed."
+            git ls-files '*.py' '*.js'
+            exit 1
+          fi

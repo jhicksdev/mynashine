@@ -1,0 +1,228 @@
+@target(py)
+<sys
+<os
+<.fsutil:{read_file, write_file, ensure_parent, is_dir}
+<.highlight:{highlight_code, highlight_block, highlight_html_document}
+<.theme:{default_css}
+<.site_proc:{process_site}
+<.demo:{generate_demo}
+
+@help_text()->s {
+  ^ "\n".join([
+    "MynaShine 0.1.0 — dependency-free syntax highlighting for Myna",
+    "",
+    "Usage:",
+    "  mynashine code <file|-> [--lang LANG] [--lines] [--wrap]",
+    "  mynashine html <input.html> [-o output.html]",
+    "  mynashine site <build_dir> [--inject-css] [--theme THEME]",
+    "  mynashine css [--theme THEME] [-o style.css]",
+    "  mynashine demo [-o build/demo.html]",
+    "",
+    "Languages:",
+    "  myna (mn), python (py), javascript (js), toml, yaml,",
+    "  bash (sh, console), html, markdown (md), template (jinja)",
+    "",
+    "Themes:",
+    "  mynapress (default), light, dark, high-contrast",
+    "",
+    "Examples:",
+    "  mynashine code page.myna --lang myna --lines",
+    "  mynashine site ../mynapress/build --inject-css",
+    "  mynashine css --theme dark -o build/highlight.css"
+  ]) + "\n"
+}
+
+@parse_args(args:[s])->A {
+  opts = {"lang": "", "out": "", "theme": "mynapress", "lines": F, "wrap": F, "inject": F, "error": "", "help": F}
+  pos = []
+  i = 0
+  n = #args
+  stop_flags = F
+  %? i < n {
+    arg = args[i]
+    ? !stop_flags && arg == "--" {
+      stop_flags = T
+      i += 1
+      ^>
+    }
+    ? !stop_flags && (arg == "-h" || arg == "--help") {
+      opts["help"] = T
+      i += 1
+      ^>
+    }
+    ? !stop_flags && (arg == "--lines") {
+      opts["lines"] = T
+      i += 1
+      ^>
+    }
+    ? !stop_flags && (arg == "--wrap") {
+      opts["wrap"] = T
+      i += 1
+      ^>
+    }
+    ? !stop_flags && (arg == "--inject-css") {
+      opts["inject"] = T
+      i += 1
+      ^>
+    }
+    ? !stop_flags && (arg == "--lang" || arg == "--theme" || arg == "-o" || arg == "--output") {
+      ? i + 1 >= n {
+        opts["error"] = `missing value for {arg}`
+        ^ [pos, opts]
+      }
+      value = args[i + 1]
+      ? arg == "--lang" {
+        opts["lang"] = value
+      } :? arg == "--theme" {
+        opts["theme"] = value
+      } : {
+        opts["out"] = value
+      }
+      i += 2
+      ^>
+    }
+    ? !stop_flags && arg.startswith("--") {
+      opts["error"] = `unknown option: {arg}`
+      ^ [pos, opts]
+    }
+    pos.append(arg)
+    i += 1
+  }
+  ^ [pos, opts]
+}
+
+@fail(message:s)->i {
+  sys.stderr.write(`mynashine: {message}\n`)
+  ^ 2
+}
+
+@run_cli(args:[s])->i {
+  ? #args == 0 {
+    sys.stdout.write(help_text())
+    ^ 0
+  }
+  ? #args == 1 && args[0] == "--version" {
+    sys.stdout.write("mynashine 0.1.0\n")
+    ^ 0
+  }
+  parsed = parse_args(args)
+  pos = parsed[0]
+  opts = parsed[1]
+  ? opts["error"] != "" {
+    ^ fail(opts["error"])
+  }
+  ? opts["help"] {
+    sys.stdout.write(help_text())
+    ^ 0
+  }
+  ? #pos == 0 {
+    sys.stdout.write(help_text())
+    ^ 2
+  }
+  cmd = pos[0]
+  ? cmd == "help" {
+    sys.stdout.write(help_text())
+    ^ 0
+  }
+  ? cmd == "version" || cmd == "--version" {
+    sys.stdout.write("mynashine 0.1.0\n")
+    ^ 0
+  }
+
+  ? cmd == "code" {
+    ? #pos < 2 {
+      ^ fail("code requires a file path (or - for stdin)")
+    }
+    source_path = pos[1]
+    !{
+      code = ""
+      ? source_path == "-" {
+        code = sys.stdin.read()
+      } : {
+        code = read_file(source_path)
+      }
+      lang = opts["lang"]
+      ? lang == "" {
+        lang = "myna"
+      }
+      html = ""
+      ? opts["wrap"] {
+        html = highlight_block(code, lang, opts["lines"])
+      } : {
+        html = highlight_code(code, lang, opts["lines"])
+      }
+      sys.stdout.write(html)
+      ^ 0
+    } !!e {
+      ^ fail(`cannot read {source_path}: {e}`)
+    }
+  }
+
+  ? cmd == "html" {
+    ? #pos < 2 {
+      ^ fail("html requires an input HTML file")
+    }
+    source_path = pos[1]
+    !{
+      before = read_file(source_path)
+      after = highlight_html_document(before)
+      ? opts["out"] != "" {
+        ensure_parent(opts["out"])
+        write_file(opts["out"], after)
+        sys.stderr.write(`highlighted {source_path} -> {opts["out"]}\n`)
+      } : {
+        sys.stdout.write(after)
+      }
+      ^ 0
+    } !!e {
+      ^ fail(`cannot process {source_path}: {e}`)
+    }
+  }
+
+  ? cmd == "site" {
+    ? #pos < 2 {
+      ^ fail("site requires a build directory")
+    }
+    root = pos[1]
+    ? !is_dir(root) {
+      ^ fail(`not a directory: {root}`)
+    }
+    !{
+      result = process_site(root, opts["inject"], opts["theme"])
+      sys.stderr.write(`mynashine: {#result[0]} HTML files, {result[1]} updated, {result[2]} code blocks scanned\n`)
+      ? result[3] != "" {
+        sys.stderr.write(`mynashine: stylesheet written to {result[3]}\n`)
+      }
+      ^ 0
+    } !!e {
+      ^ fail(`site processing failed: {e}`)
+    }
+  }
+
+  ? cmd == "css" {
+    css = default_css(opts["theme"])
+    ? opts["out"] != "" {
+      ensure_parent(opts["out"])
+      write_file(opts["out"], css)
+    } : {
+      sys.stdout.write(css)
+    }
+    ^ 0
+  }
+
+  ? cmd == "demo" {
+    out = opts["out"]
+    ? out == "" {
+      out = "build/demo.html"
+    }
+    !{
+      generate_demo(out)
+      sys.stderr.write(`mynashine: demo written to {out}\n`)
+      ^ 0
+    } !!e {
+      ^ fail(`cannot build demo: {e}`)
+    }
+  }
+
+  ^ fail(`unknown command: {cmd}`)
+}

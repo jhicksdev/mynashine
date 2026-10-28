@@ -1,0 +1,7 @@
+@target(py)
+<sys
+<.cli:{run_cli}
+
+@main {
+  sys.exit(run_cli(sys.argv[1:]))
+}

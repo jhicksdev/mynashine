@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+if command -v myna >/dev/null 2>&1; then
+  exec myna run "$ROOT/src/main.myna" "$@"
+fi
+
+if [ -x "$ROOT/.venv/bin/myna" ]; then
+  exec "$ROOT/.venv/bin/myna" run "$ROOT/src/main.myna" "$@"
+fi
+
+if [ -n "${MYNA_SRC:-}" ]; then
+  export PYTHONPATH="$MYNA_SRC${PYTHONPATH:+:$PYTHONPATH}"
+fi
+
+if ! python3 -c 'import myna' >/dev/null 2>&1; then
+  echo "error: myna is not installed; install myna-lang or set MYNA_SRC to a Myna checkout" >&2
+  exit 1
+fi
+
+exec python3 -m myna run "$ROOT/src/main.myna" "$@"

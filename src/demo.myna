@@ -1,0 +1,402 @@
+@target(py)
+<os
+<.fsutil:{read_file, write_file, ensure_parent, is_file}
+<.highlight:{highlight_block, highlight_html_document, default_css}
+<.theme:{theme_light_vars, theme_dark_vars, theme_hc_vars}
+<.util:{html_escape, html_escape_attr, join_str}
+
+@excerpt(path:s, max_lines:i)->s {
+  ? !is_file(path) {
+    ^ ""
+  }
+  !{
+    text = read_file(path).replace("\r\n", "\n")
+    lines = text.split("\n")
+    ? #lines > max_lines {
+      ^ "\n".join(lines[0:max_lines]) + "\n"
+    }
+    ^ text
+  } !!e {
+    ^ ""
+  }
+}
+
+@fallback_myna()->s {
+  ^ "\n".join([
+    "@target(py)",
+    "<asyncio",
+    "",
+    "$$Task(id:i, title:s, done:b=F) {",
+    "  @summary->s {",
+    '    ^ `[{.done ? "x" : " "}] #{.id}: {.title}`',
+    "  }",
+    "}",
+    "",
+    "~@render(tasks:[Task])->[s] {",
+    "  !{",
+    "    ^[t.summary() | t <- tasks ? !t.done]",
+    "  } !!e {",
+    "    p(`failed: {e}`)",
+    "    ^[]",
+    "  }",
+    "}",
+    "",
+    "@main {",
+    '  % line <- asyncio.run(render([Task(1, "Ship MynaShine")])) {',
+    "    p(line)",
+    "  }",
+    "}"
+  ])
+}
+
+@python_sample()->s {
+  ^ "\n".join([
+    "from dataclasses import dataclass, field",
+    "",
+    "@dataclass",
+    "class Page:",
+    "    title: str",
+    "    tags: list[str] = field(default_factory=list)",
+    "",
+    "def render(page: Page) -> str:",
+    "    label = f\"{page.title!r}\"",
+    "    return f\"<h1>{label}</h1>\"  # escaped by the caller"
+  ])
+}
+
+@js_sample()->s {
+  ^ "\n".join([
+    "const pages = await Promise.all(",
+    "  files.map(async (file) => {",
+    "    const text = await readFile(file, 'utf8');",
+    "    return text.replace(/\\n/g, '<br>'); // demo only",
+    "  })",
+    ");",
+    "",
+    "export function render(page) {",
+    "  return `<article>${page.title}</article>`;",
+    "}"
+  ])
+}
+
+@toml_sample()->s {
+  ^ "\n".join([
+    "title = \"MynaShine\"",
+    "base_url = \"https://example.com\"",
+    "build = true",
+    "",
+    "[site]",
+    "theme = \"mynapress\"",
+    "languages = [\"myna\", \"python\", \"bash\"]"
+  ])
+}
+
+@bash_sample()->s {
+  ^ "\n".join([
+    "$ mynashine site ../mynapress/build --inject-css",
+    "mynashine: 18 HTML files, 3 updated, 12 code blocks scanned",
+    "$ mynashine css --theme dark -o assets/highlight.css",
+    "$ mynashine code page.myna --lang myna --lines"
+  ])
+}
+
+@template_sample()->s {
+  ^ "\n".join([
+    "<article class=\"post\">",
+    "  <h1>{{ post.title | escape }}</h1>",
+    "  {% if post.tags %}",
+    "    <ul class=\"tags\">",
+    "      {% for tag in post.tags %}",
+    "        <li><a href=\"/tags/{{ tag }}\">{{ tag }}</a></li>",
+    "      {% endfor %}",
+    "    </ul>",
+    "  {% endif %}",
+    "</article>"
+  ])
+}
+
+@markdown_sample()->s {
+  ^ "\n".join([
+    "# MynaPress",
+    "",
+    "A tiny static site generator written in **Myna**.",
+    "",
+    "```myna",
+    "? page :? Page {",
+    "  p(page.title)",
+    "}",
+    "```",
+    "",
+    "> Code blocks are highlighted at build time."
+  ])
+}
+
+@code_card(title:s, lang:s, code:s, note:s)->s {
+  body = highlight_block(code, lang)
+  note_html = ""
+  ? note != "" {
+    note_html = `<figcaption>{html_escape(note)}</figcaption>`
+  }
+  ^ join_str([
+    "<figure class=\"code-card\">",
+    "<div class=\"code-head\"><span class=\"code-title\">", html_escape(title),
+    "</span><span class=\"lang-tag\">", html_escape(lang), "</span></div>",
+    body,
+    note_html,
+    "</figure>"
+  ])
+}
+
+@legend()->s {
+  items = [
+    ["hl-kw", "? if", "if / elif / else / match / return"],
+    ["hl-decl", "@f  ~@f", "function, method, property declarations"],
+    ["hl-imp", "<re  @main", "imports and module directives"],
+    ["hl-dec", "#[dec]", "decorator lists"],
+    ["hl-fn", "render_blocks", "declared function names"],
+    ["hl-cls", "$Page  $$Task", "classes and dataclasses"],
+    ["hl-type", "i  f  s  b  ->", "type annotations only"],
+    ["hl-bi", "@map  p", "built-in shorthands"],
+    ["hl-self", ".attr  ..init", "self / super references"],
+    ["hl-const", "T  F  N  U", "boolean and null constants"],
+    ["hl-num", "42  3.14  0xff", "numeric literals"],
+    ["hl-str", "\"text\"  `hi {x}`", "strings and templates"],
+    ["hl-interp", "{x:.2f}", "interpolation and format specs"],
+    ["hl-op", "|>  :=  &&  :?  #", "operators"],
+    ["hl-punc", "{}  ()  []", "delimiters"],
+    ["hl-com", "# comment", "comments"]
+  ]
+  out = []
+  % row <- items {
+    out.append("<div class=\"legend-row\">")
+    out.append(`<span class="{row[0]}">{html_escape(row[1])}</span>`)
+    out.append(`<span>{html_escape(row[2])}</span>`)
+    out.append("</div>")
+  }
+  ^ join_str(out)
+}
+
+@demo_css()->s {
+  ^ "\n".join([
+    ":root{--page-bg:#fbfaf7;--page-fg:#1d1d1b;--paper:#fffdf9;--line:#ddd8cd;--muted:#666;--accent:#14532d;--accent-soft:#dcfce7;}",
+    "html[data-theme=light]{color-scheme:light;--page-bg:#fbfaf7;--page-fg:#1d1d1b;--paper:#fffdf9;--line:#ddd8cd;--muted:#666;--accent:#14532d;--accent-soft:#dcfce7;}",
+    "html[data-theme=dark]{color-scheme:dark;--page-bg:#171715;--page-fg:#f0ede5;--paper:#1e1e1b;--line:#3a3934;--muted:#a8a49a;--accent:#86efac;--accent-soft:#1d3b2a;}",
+    "@media (prefers-color-scheme:dark){html:not([data-theme]){color-scheme:dark;--page-bg:#171715;--page-fg:#f0ede5;--paper:#1e1e1b;--line:#3a3934;--muted:#a8a49a;--accent:#86efac;--accent-soft:#1d3b2a;}}",
+    "*{box-sizing:border-box;}",
+    "html{scroll-behavior:smooth;}",
+    "body{margin:0;background:var(--page-bg);color:var(--page-fg);font:16px/1.65 system-ui,-apple-system,'Segoe UI',sans-serif;}",
+    "h1,h2,h3{font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;line-height:1.08;letter-spacing:-.02em;}",
+    "a{color:var(--accent);}",
+    ".wrap{max-width:1120px;margin:0 auto;padding:0 1.25rem;}",
+    ".top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--page-bg) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}",
+    ".top-inner{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.7rem 0;}",
+    ".brand{font-weight:750;letter-spacing:-.02em;text-decoration:none;color:var(--page-fg);}",
+    ".brand span{color:var(--accent);}",
+    ".top nav{display:flex;gap:1rem;flex-wrap:wrap;font-size:.9rem;}",
+    ".top nav a{text-decoration:none;color:var(--muted);}",
+    ".top nav a:hover{color:var(--page-fg);}",
+    ".theme-btn{border:1px solid var(--line);background:var(--paper);color:var(--page-fg);border-radius:999px;padding:.35rem .8rem;font:inherit;font-size:.85rem;cursor:pointer;}",
+    ".hero{padding:5.5rem 0 3rem;border-bottom:1px solid var(--line);background:radial-gradient(60rem 24rem at 15% -10%,var(--accent-soft),transparent 70%);}",
+    ".eyebrow{color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin:0 0 1rem;}",
+    ".hero h1{font-size:clamp(2.8rem,7vw,5.5rem);margin:0 0 1rem;}",
+    ".hero p{font-size:1.15rem;max-width:42rem;color:var(--muted);margin:0 0 2rem;}",
+    ".stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin-top:2.5rem;}",
+    ".stat{border-top:2px solid var(--line);padding-top:.8rem;}",
+    ".stat b{display:block;font-size:1.6rem;line-height:1.1;}",
+    ".stat span{color:var(--muted);font-size:.82rem;}",
+    "section{padding:4rem 0;border-bottom:1px solid var(--line);}",
+    ".section-head{display:flex;justify-content:space-between;align-items:end;gap:2rem;margin-bottom:2rem;}",
+    ".section-head h2{font-size:clamp(1.8rem,4vw,2.6rem);margin:0;}",
+    ".section-head p{max-width:36rem;color:var(--muted);margin:.4rem 0 0;}",
+    ".grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem;}",
+    ".grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.25rem;}",
+    ".code-card{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--paper);box-shadow:0 12px 30px rgba(0,0,0,.04);}",
+    ".code-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.55rem .85rem;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--muted);}",
+    ".code-title{font-weight:650;color:var(--page-fg);}",
+    ".lang-tag{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--accent-soft);color:var(--accent);padding:.12rem .45rem;border-radius:999px;}",
+    ".code-card figcaption{padding:.65rem .9rem;border-top:1px solid var(--line);color:var(--muted);font-size:.8rem;}",
+    "pre.hl{margin:0;border-radius:0;padding:1.05rem 1.1rem;max-height:34rem;}",
+    ".legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem 1.5rem;}",
+    ".legend-row{display:grid;grid-template-columns:minmax(8.5rem,auto) 1fr;gap:1rem;padding:.5rem 0;border-bottom:1px dashed var(--line);align-items:baseline;}",
+    ".legend-row span:first-child{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82rem;}",
+    ".legend-row span:last-child{color:var(--muted);font-size:.82rem;}",
+    ".callout{border-left:3px solid var(--accent);padding:.25rem 0 .25rem 1rem;color:var(--muted);}",
+    ".pill-row{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:1rem;}",
+    ".pill{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:.15rem .55rem;color:var(--muted);}",
+    "footer{padding:2.5rem 0 4rem;color:var(--muted);font-size:.85rem;}",
+    ".footer-inner{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;}",
+    "@media (max-width:800px){.stats{grid-template-columns:repeat(2,minmax(0,1fr));}.grid-2,.grid-3,.legend{grid-template-columns:1fr;}.top nav{display:none;}.section-head{display:block;}}",
+    "@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}"
+  ])
+}
+
+@toggle_js()->s {
+  ^ "\n".join([
+    "(function () {",
+    "  var root = document.documentElement;",
+    "  var btn = document.getElementById('theme-toggle');",
+    "  var key = 'mynashine-demo-theme';",
+    "  var saved = null;",
+    "  try { saved = localStorage.getItem(key); } catch (e) {}",
+    "  if (!saved) {",
+    "    saved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';",
+    "  }",
+    "  function sync() {",
+    "    var dark = root.getAttribute('data-theme') === 'dark';",
+    "    btn.textContent = dark ? 'Light mode' : 'Dark mode';",
+    "    btn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');",
+    "  }",
+    "  root.setAttribute('data-theme', saved);",
+    "  sync();",
+    "  btn.addEventListener('click', function () {",
+    "    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';",
+    "    root.setAttribute('data-theme', next);",
+    "    try { localStorage.setItem(key, next); } catch (e) {}",
+    "    sync();",
+    "  });",
+    "})();"
+  ])
+}
+
+@generate_demo(out_path:s)->s {
+  ensure_parent(out_path)
+  myna_repo = "/home/joseph/Projects/myna"
+  press_repo = "/home/joseph/Projects/mynapress"
+
+  myna_code = excerpt(`{press_repo}/src/markdown.myna`, 64)
+  ? myna_code == "" {
+    myna_code = fallback_myna()
+  }
+  task_code = excerpt(`{myna_repo}/examples/demo.myna`, 40)
+  ? task_code == "" {
+    task_code = fallback_myna()
+  }
+  template_code = excerpt(`{press_repo}/src/template.myna`, 54)
+  ? template_code == "" {
+    template_code = template_sample()
+  }
+  api_code = excerpt(`{myna_repo}/examples/books_api.myna`, 48)
+  ? api_code == "" {
+    api_code = fallback_myna()
+  }
+
+  hero_blocks = join_str([
+    code_card("MynaPress — markdown.myna", "myna", myna_code, "A real module: fenced blocks, inline parsing and HTML escaping."),
+    code_card("Myna — demo.myna", "myna", task_code, "Dataclasses, async functions, interpolation and comprehensions.")
+  ])
+
+  companion_blocks = join_str([
+    code_card("Python", "python", python_sample(), "Keywords, decorators, f-strings and function names."),
+    code_card("JavaScript", "javascript", js_sample(), "ES modules, template literals and comments."),
+    code_card("TOML", "toml", toml_sample(), "Keys, tables, strings and booleans."),
+    code_card("Bash", "bash", bash_sample(), "Prompts, commands, flags and comments."),
+    code_card("HTML + MynaPress templates", "template", template_sample(), "Tags, attributes, {{ interpolation }} and {% tags %}."),
+    code_card("Markdown", "markdown", markdown_sample(), "Headings, emphasis, fences and blockquotes.")
+  ])
+
+  more_myna = join_str([
+    code_card("MynaPress — template.myna", "myna", template_code, "Template inheritance and filters, highlighted from source."),
+    code_card("Myna — books_api.myna", "myna", api_code, "A fuller service example from the Myna repository.")
+  ])
+
+  css = join_str([
+    default_css("mynapress"),
+    "\nhtml[data-theme=dark]{", theme_dark_vars(), "}",
+    "\nhtml[data-theme=light]{color-scheme:light;", theme_light_vars(), "}",
+    "\n", demo_css(), "\n"
+  ])
+
+  lines = []
+  lines.append("<!doctype html>")
+  lines.append("<html lang=\"en\">")
+  lines.append("<head>")
+  lines.append("<meta charset=\"utf-8\">")
+  lines.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
+  lines.append("<meta name=\"color-scheme\" content=\"light dark\">")
+  lines.append("<title>MynaShine — Myna syntax highlighting for the web</title>")
+  lines.append("<meta name=\"description\" content=\"A tiny, dependency-free syntax highlighter for MynaPress, written entirely in Myna.\">")
+  lines.append("<style>")
+  lines.append(css)
+  lines.append("</style>")
+  lines.append("</head>")
+  lines.append("<body>")
+  lines.append("<header class=\"top\"><div class=\"wrap top-inner\">")
+  lines.append("<a class=\"brand\" href=\"#top\">Myna<span>Shine</span></a>")
+  lines.append("<nav aria-label=\"Sections\"><a href=\"#myna\">Myna</a><a href=\"#languages\">Languages</a><a href=\"#tokens\">Tokens</a><a href=\"#use\">Use it</a></nav>")
+  lines.append("<button class=\"theme-btn\" id=\"theme-toggle\" type=\"button\">Dark mode</button>")
+  lines.append("</div></header>")
+  lines.append("<main id=\"top\">")
+  lines.append("<section class=\"hero\"><div class=\"wrap\">")
+  lines.append("<p class=\"eyebrow\">Zero-JavaScript highlighting</p>")
+  lines.append("<h1>Myna, in&nbsp;colour.</h1>")
+  lines.append("<p>MynaShine turns fenced code blocks into semantic HTML at build time. No browser runtime, no dependencies, no hand-maintained TextMate grammar — just a tolerant scanner written in Myna.</p>")
+  lines.append("<div class=\"stats\">")
+  lines.append("<div class=\"stat\"><b>16</b><span>semantic token classes</span></div>")
+  lines.append("<div class=\"stat\"><b>9</b><span>language aliases</span></div>")
+  lines.append("<div class=\"stat\"><b>0</b><span>runtime dependencies</span></div>")
+  lines.append("<div class=\"stat\"><b>100%</b><span>lossless round-trip</span></div>")
+  lines.append("</div></div></section>")
+
+  lines.append("<section id=\"myna\"><div class=\"wrap\">")
+  lines.append("<div class=\"section-head\"><div><h2>The hard part: sigils</h2><p>Myna reuses <code>?</code>, <code>%</code>, <code>^</code>, <code>!</code>, <code>&lt;</code> and <code>#</code> for both statement keywords and infix operators. MynaShine tracks statement starts, loop headers, type positions and leading self references to colour them correctly.</p></div></div>")
+  lines.append("<div class=\"grid-2\">")
+  lines.append(hero_blocks)
+  lines.append("</div>")
+  lines.append("<p class=\"callout\">Statement prefixes and expression operators share the same ASCII, so a regex-only highlighter cannot distinguish <code>? cond {</code> from <code>c ? a : b</code>. Lightweight lexical context fixes that without a full parser.</p>")
+  lines.append("</div></section>")
+
+  lines.append("<section id=\"languages\"><div class=\"wrap\">")
+  lines.append("<div class=\"section-head\"><div><h2>Companion languages</h2><p>MynaPress documentation mixes Myna with Python, JavaScript, configuration, shell sessions, HTML templates and Markdown. All of them share the same token vocabulary and themes.</p></div></div>")
+  lines.append("<div class=\"grid-2\">")
+  lines.append(companion_blocks)
+  lines.append("</div>")
+  lines.append("</div></section>")
+
+  lines.append("<section><div class=\"wrap\">")
+  lines.append("<div class=\"section-head\"><div><h2>More real Myna</h2><p>Snippets are read from the sibling Myna and MynaPress checkouts when the demo is generated.</p></div></div>")
+  lines.append("<div class=\"grid-2\">")
+  lines.append(more_myna)
+  lines.append("</div>")
+  lines.append("</div></section>")
+
+  lines.append("<section id=\"tokens\"><div class=\"wrap\">")
+  lines.append("<div class=\"section-head\"><div><h2>Token taxonomy</h2><p>Compact <code>hl-*</code> classes, no wrapper tags around plain identifiers or whitespace, and adjacent same-class tokens merge automatically.</p></div></div>")
+  lines.append("<div class=\"legend\">")
+  lines.append(legend())
+  lines.append("</div>")
+  lines.append("<div class=\"pill-row\">")
+  lines.append("<span class=\"pill\">mynapress</span><span class=\"pill\">light</span><span class=\"pill\">dark</span><span class=\"pill\">high-contrast</span>")
+  lines.append("</div>")
+  lines.append("</div></section>")
+
+  lines.append("<section id=\"use\"><div class=\"wrap\">")
+  lines.append("<div class=\"section-head\"><div><h2>Use it</h2><p>Post-process an existing build directory, or import the module directly from MynaPress.</p></div></div>")
+  lines.append("<div class=\"grid-2\">")
+  lines.append(code_card("Post-process a build", "bash", "\n".join([
+    "$ mynashine site ../mynapress/build --inject-css",
+    "$ mynashine html page.html -o page.highlighted.html",
+    "$ mynashine css --theme mynapress -o style.css"
+  ]), "Works on any static site that emits <pre><code class=\"language-...\"> blocks."))
+  lines.append(code_card("Import from Myna", "myna", "\n".join([
+    "@target(py)",
+    "<.mynashine.highlight:{highlight_html_document, default_css}",
+    "",
+    "@render_page(html:s)->s {",
+    "  ^ highlight_html_document(html)",
+    "}",
+    "",
+    "css = default_css(\"mynapress\")"
+  ]), "Drop src/ into a project, or vendor the single-file bundle."))
+  lines.append("</div>")
+  lines.append("</div></section>")
+  lines.append("</main>")
+  lines.append("<footer><div class=\"wrap footer-inner\"><span>MynaShine 0.1.0 · MIT · built with Myna</span><span>Lossless by construction · fault-tolerant by design</span></div></footer>")
+  lines.append("<script>")
+  lines.append(toggle_js())
+  lines.append("</script>")
+  lines.append("</body>")
+  lines.append("</html>")
+
+  write_file(out_path, "\n".join(lines) + "\n")
+  ^ out_path
+}
