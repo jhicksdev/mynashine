@@ -46,6 +46,11 @@
   contains(r, out, "<h1>Hello</h1>", "leading markup preserved")
   contains(r, out, "<footer>bye</footer>", "trailing markup preserved")
 
+  # MynaPress's html_escape emits &quot; and &#39;; both must decode once.
+  quoted = "<pre><code class=\"language-myna\">x = &quot;a&quot;; y = &#39;b&#39;</code></pre>"
+  quoted_out = highlight_html_document(quoted)
+  eq_s(r, html_unescape(strip_tags(quoted_out)), "x = \"a\"; y = 'b'", "MynaPress entities decode once")
+
   # A pre without a code child is left alone.
   bare = "<pre>not code</pre>"
   eq_s(r, highlight_html_document(bare), bare, "bare pre is untouched")
