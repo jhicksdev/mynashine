@@ -215,7 +215,7 @@
     ".code-title{font-weight:650;color:var(--page-fg);}",
     ".lang-tag{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--accent-soft);color:var(--accent);padding:.12rem .45rem;border-radius:999px;}",
     ".code-card figcaption{padding:.65rem .9rem;border-top:1px solid var(--line);color:var(--muted);font-size:.8rem;}",
-    "pre.hl{margin:0;border-radius:0;padding:1.05rem 1.1rem;max-height:34rem;}",
+    "pre.hl{margin:0;border-radius:0;padding:1.05rem 1.1rem;max-height:34rem;overflow:auto;}",
     ".legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem 1.5rem;}",
     ".legend-row{display:grid;grid-template-columns:minmax(8.5rem,auto) 1fr;gap:1rem;padding:.5rem 0;border-bottom:1px dashed var(--line);align-items:baseline;}",
     ".legend-row span:first-child{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82rem;}",

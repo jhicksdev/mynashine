@@ -114,8 +114,14 @@
   eq_s(r, kind_nth(t, "b", 0), "id", "ternary arm b without spaces is not a type")
   t = scan_myna("d = {x:i}")
   eq_s(r, kind_nth(t, "i", 0), "id", "dict value i is not a type")
+  t = scan_myna("d = {x:i, y: 2}")
+  eq_s(r, kind_nth(t, "i", 0), "id", "dict value before comma is not a type")
+  t = scan_myna("d = {x:{s:i}}")
+  eq_s(r, kind_nth(t, "i", 0), "id", "nested dict value is not a type")
   t = scan_myna("@f(a:i) { }")
   eq_s(r, kind_nth(t, "i", 0), "type", "parameter annotation still works")
+  t = scan_myna("@f(a:i) { x:i = 1 }")
+  eq_s(r, kind_nth(t, "i", 1), "type", "annotation inside a function block still works")
 
   # Interpolation
   t = scan_myna("f = `result: {x + 1:.2f}`")

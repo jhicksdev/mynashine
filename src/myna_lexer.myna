@@ -166,6 +166,28 @@
   ^ F
 }
 
+@inside_expr_brace(stack:[b])->b {
+  % flag <- stack {
+    ? flag {
+      ^ T
+    }
+  }
+  ^ F
+}
+
+@starts_expr_brace(prev:s, prev_kind:s)->b {
+  ? prev == "" || prev == "^" || prev == "=>" {
+    ^ T
+  }
+  ? prev_kind == "op" {
+    ^ T
+  }
+  ? prev_kind == "punc" && in_list(prev, ["(", "[", ",", ":"]) {
+    ^ T
+  }
+  ^ F
+}
+
 @last_kind(tokens:[A])->s {
   idx = #tokens - 1
   %? idx >= 0 {
@@ -542,6 +564,7 @@
   param_level = -1
   expect_params = F
   ternary = 0
+  brace_stack = []
   loop_header = F
   in_import = F
   prev = ""
@@ -1075,7 +1098,7 @@
       ann_context = before_kind == "id" || before_kind == "type" || before_kind == "cls" || before_text == ")" || before_text == "]"
       in_params = param_level >= 0 && paren == param_level
       at_block_level = paren == 0 && bracket == 0
-      ? !in_import && adjacent && ann_context && (in_params || at_block_level) && looks_like_type_start(code, i) {
+      ? !in_import && !inside_expr_brace(brace_stack) && adjacent && ann_context && (in_params || at_block_level) && looks_like_type_start(code, i) {
         typed = scan_type(code, i, "=,)\n;}")
         after = next_nonspace(code, typed[1])
         after_ch = ""
@@ -1418,6 +1441,8 @@
     }
 
     ? ch == "{" {
+      expr_brace = starts_expr_brace(last_text(out), last_kind(out))
+      brace_stack.append(expr_brace)
       out.append(["punc", "{"])
       i += 1
       stmt = T
@@ -1428,6 +1453,9 @@
     }
 
     ? ch == "}" {
+      ? #brace_stack > 0 {
+        brace_stack.pop()
+      }
       out.append(["punc", "}"])
       i += 1
       stmt = T
