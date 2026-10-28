@@ -23,6 +23,9 @@
     end += 1
   }
   word = low[start:end]
+  ? find_sub(word, "language-", 0) == 0 {
+    word = word[9:]
+  }
   ? word == "" {
     ^ "text"
   }

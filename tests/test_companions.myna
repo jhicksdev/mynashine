@@ -90,7 +90,7 @@
   lossless(r, md, "markdown", "markdown lossless")
 
   # Public dispatch and aliases
-  aliases = ["myna", "mn", "python", "py", "python3", "javascript", "js", "mjs", "toml", "yaml", "yml", "bash", "sh", "shell", "console", "html", "xml", "markdown", "md", "jinja", "template", "myna-template", "text", "plain", "txt", "unknown-thing"]
+  aliases = ["myna", "mn", "language-myna", "python", "py", "python3", "javascript", "js", "mjs", "toml", "yaml", "yml", "bash", "sh", "shell", "console", "html", "xml", "markdown", "md", "jinja", "template", "myna-template", "text", "plain", "txt", "unknown-thing"]
   % alias <- aliases {
     out = highlight_code("x = 1\n", alias)
     check(r, out != "", `alias {alias} produces output`, out)
