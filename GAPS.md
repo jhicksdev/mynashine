@@ -1,12 +1,8 @@
 # Myna gaps found while building MynaShine
 
-Environment: `myna-lang` **0.4.2** plus the post-0.4.2 fixes on the local Myna `main`
-working tree (2026-10-28), CPython **3.12.3**, Linux. The fixes were unreleased at the
-time of writing; MynaShine is verified against the fixed checkout and remains usable with
-released 0.4.2 for the CLI/module API.
-
-MynaShine did not modify the Myna checkout. All three gaps below are now **fixed
-upstream** and re-verified.
+Environment: `myna-lang` **0.5.0** (2026-10-28), CPython **3.12.3**, Linux.
+MynaShine did not modify the Myna checkout. All three gaps below were **fixed in Myna
+0.5.0** and re-verified against the released toolchain.
 
 | Gap | Area | Severity | Status |
 | :-- | :-- | :-- | :-- |
@@ -52,10 +48,10 @@ escapes instead of silently keeping the backslash. The original reproduction now
 ['a', '\x0c', 'b', '\x0b', 'c']
 ```
 
-MynaShine deliberately keeps its scanners free of `\f`/`\v` escape literals so the CLI
-still runs on released 0.4.2. Actual form-feed/vertical-tab characters pass through as
-plain text and remain lossless; the malformed-input corpus includes `"a\fb\vc"` across
-every language.
+MynaShine deliberately keeps its scanners free of `\f`/`\v` escape literals, so the CLI
+also remains usable on released 0.4.2. Actual form-feed/vertical-tab characters pass
+through as plain text and remain lossless; the malformed-input corpus includes
+`"a\fb\vc"` across every language.
 
 ## G2. JavaScript target rejects relative imports in pure modules — fixed
 

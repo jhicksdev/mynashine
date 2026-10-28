@@ -38,28 +38,21 @@ parsing a full AST.
   the same class merge into one span.
 - **Four themes**, light/dark support, optional line numbers, and an idempotent
   post-processor for existing site builds.
-- **No runtime dependencies** beyond `myna-lang >= 0.4.2` and the Python standard library.
+- **No runtime dependencies** beyond `myna-lang >= 0.5.0` and the Python standard library.
 
 ## Requirements
 
 - Python 3.11+
-- [`myna-lang`](https://pypi.org/project/myna-lang/) 0.4.2 or newer
+- [`myna-lang`](https://pypi.org/project/myna-lang/) 0.5.0 or newer
 - Node 20.11+ only for the optional JavaScript-target smoke test
 
 ```bash
-python3 -m pip install "myna-lang>=0.4.2"
+python3 -m pip install "myna-lang>=0.5.0"
 ```
 
-The runtime CLI/module API works on released 0.4.2. The development test suite uses
-`--module-root`, and the JavaScript smoke test uses multi-file relative imports; both are
-part of the Myna fixes made after 0.4.2. Until those are released, install Myna from
-`main` for development:
-
-```bash
-python3 -m pip install "git+https://github.com/jhicksdev/myna.git@main"
-```
-
-For local development against a Myna checkout:
+Myna 0.5.0 provides `--module-root`, full Python string escapes, and multi-file JavaScript
+relative imports, which the development suite and JS target use. For local development
+against a Myna checkout:
 
 ```bash
 PYTHONPATH=/home/joseph/Projects/myna python3 -m myna run src/main.myna --help
@@ -242,8 +235,8 @@ the copied text.
 ## JavaScript target
 
 The core modules (`util`, `token`, `myna_lexer`, all language scanners, `highlight`, and
-`theme`) declare `@target(py, js)` and avoid Python-only APIs. With the post-0.4.2 Myna
-fixes they compile to multi-file ES modules:
+`theme`) declare `@target(py, js)` and avoid Python-only APIs. With Myna 0.5.0 they
+compile to multi-file ES modules:
 
 ```bash
 python3 -m myna run -t js --module-root . tests/js_smoke.myna
@@ -321,7 +314,7 @@ stray sigils, and non-ASCII text.
 ## Development
 
 ```bash
-# From the repository root (requires Myna with the post-0.4.2 fixes):
+# From the repository root (requires myna-lang >= 0.5.0):
 python3 -m myna run --module-root . tests/run_tests.myna
 
 # Or against a local Myna checkout:
