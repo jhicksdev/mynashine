@@ -1,0 +1,199 @@
+@target(py, js)
+<.util:{is_digit, is_id_start, is_id_cont, in_text, in_list}
+
+# Lightweight JavaScript / ES module scanner.
+
+@js_string_end(code:s, quote_at:i)->i {
+  n = #code
+  quote = code[quote_at]
+  i = quote_at + 1
+  %? i < n {
+    ? code[i] == "\\" {
+      i += 2
+      ^>
+    }
+    ? code[i] == quote {
+      ^ i + 1
+    }
+    i += 1
+  }
+  ^ n
+}
+
+@js_ident_end(code:s, i:i)->i {
+  j = i
+  %? j < #code && is_id_cont(code[j]) {
+    j += 1
+  }
+  ^ j
+}
+
+@js_number_end(code:s, i:i)->i {
+  n = #code
+  j = i
+  ? j + 1 < n && code[j] == "0" && in_text(code[j + 1], "xXoObB") {
+    j += 2
+    %? j < n && (is_id_cont(code[j]) || code[j] == "_") {
+      j += 1
+    }
+    ? j < n && code[j] == "n" {
+      j += 1
+    }
+    ^ j
+  }
+  %? j < n && (is_digit(code[j]) || code[j] == "_") {
+    j += 1
+  }
+  ? j < n && code[j] == "." && !(j + 1 < n && code[j + 1] == ".") {
+    j += 1
+    %? j < n && (is_digit(code[j]) || code[j] == "_") {
+      j += 1
+    }
+  }
+  ? j < n && in_text(code[j], "eE") {
+    j += 1
+    ? j < n && in_text(code[j], "+-") {
+      j += 1
+    }
+    %? j < n && is_digit(code[j]) {
+      j += 1
+    }
+  }
+  ? j < n && code[j] == "n" {
+    j += 1
+  }
+  ^ j
+}
+
+@js_keyword(word:s)->b {
+  ^ in_list(word, ["as", "async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "export", "extends", "finally", "for", "from", "function", "get", "if", "import", "in", "instanceof", "let", "new", "of", "return", "set", "static", "super", "switch", "this", "throw", "try", "typeof", "var", "void", "while", "with", "yield"])
+}
+
+@js_builtin(word:s)->b {
+  ^ in_list(word, ["Array", "BigInt", "Boolean", "Date", "Error", "JSON", "Map", "Math", "Number", "Object", "Promise", "Proxy", "Reflect", "RegExp", "Set", "String", "Symbol", "Uint8Array", "WeakMap", "WeakSet", "console", "document", "globalThis", "process", "window"])
+}
+
+@js_op_at(code:s, i:i)->s {
+  n = #code
+  candidates = ["===", "!==", ">>>", "**=", "&&=", "||=", "??=", "<<=", ">>=", "...", "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "**", "//", "<<", ">>", "??"]
+  % op <- candidates {
+    size = #op
+    ? i + size <= n && code[i:i + size] == op {
+      ^ op
+    }
+  }
+  ^ ""
+}
+
+@scan_javascript(code:s)->[A] {
+  out = []
+  n = #code
+  i = 0
+  expect_name = ""
+  %? i < n {
+    ch = code[i]
+    ? in_text(ch, " \t\r") {
+      j = i + 1
+      %? j < n && in_text(code[j], " \t\r") {
+        j += 1
+      }
+      out.append(["ws", code[i:j]])
+      i = j
+      ^>
+    }
+    ? ch == "\n" {
+      out.append(["ws", "\n"])
+      i += 1
+      ^>
+    }
+    ? ch == "/" && i + 1 < n && code[i + 1] == "/" {
+      j = i
+      %? j < n && code[j] != "\n" {
+        j += 1
+      }
+      out.append(["com", code[i:j]])
+      i = j
+      ^>
+    }
+    ? ch == "/" && i + 1 < n && code[i + 1] == "*" {
+      close = -1
+      j = i + 2
+      %? j + 1 < n {
+        ? code[j] == "*" && code[j + 1] == "/" {
+          close = j + 2
+          ^!
+        }
+        j += 1
+      }
+      ? close < 0 {
+        close = n
+      }
+      out.append(["com", code[i:close]])
+      i = close
+      ^>
+    }
+    ? ch == '"' || ch == "'" || ch == "`" {
+      end = js_string_end(code, i)
+      out.append(["str", code[i:end]])
+      i = end
+      expect_name = ""
+      ^>
+    }
+    ? is_digit(ch) || (ch == "." && i + 1 < n && is_digit(code[i + 1])) {
+      end = js_number_end(code, i)
+      out.append(["num", code[i:end]])
+      i = end
+      ^>
+    }
+    ? is_id_start(ch) {
+      end = js_ident_end(code, i)
+      word = code[i:end]
+      kind = "id"
+      ? word == "true" || word == "false" || word == "null" || word == "undefined" || word == "NaN" || word == "Infinity" {
+        kind = "const"
+      } :? js_keyword(word) {
+        kind = "kw"
+        ? word == "function" || word == "class" {
+          expect_name = word
+        }
+      } :? expect_name == "function" {
+        kind = "fn"
+        expect_name = ""
+      } :? expect_name == "class" {
+        kind = "cls"
+        expect_name = ""
+      } :? js_builtin(word) {
+        kind = "bi"
+      } :? word == "this" {
+        kind = "self"
+      }
+      out.append([kind, word])
+      i = end
+      ^>
+    }
+    op = js_op_at(code, i)
+    ? op != "" {
+      out.append(["op", op])
+      i += #op
+      ^>
+    }
+    ? in_text(ch, "()[]{}") {
+      out.append(["punc", ch])
+      i += 1
+      ^>
+    }
+    ? in_text(ch, ",;:.") {
+      out.append(["punc", ch])
+      i += 1
+      ^>
+    }
+    ? in_text(ch, "+-*/%&|^~<>=") {
+      out.append(["op", ch])
+      i += 1
+      ^>
+    }
+    out.append(["text", ch])
+    i += 1
+  }
+  ^ out
+}

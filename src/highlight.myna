@@ -1,0 +1,224 @@
+@target(py, js)
+<.util:{html_escape, html_escape_attr, html_unescape, join_str, in_text, in_list, lower_ascii, find_sub}
+<.token:{render_inner}
+<.myna_lexer:{scan_myna}
+<.lang_py:{scan_python}
+<.lang_js:{scan_javascript}
+<.lang_config:{scan_config}
+<.lang_shell:{scan_shell}
+<.lang_markup:{scan_markup}
+<.theme:{default_css}
+
+@normalize_lang(lang:s)->s {
+  low = lower_ascii(lang)
+  # Trim surrounding whitespace and keep only the first info word, so
+  # ```myna title="x" works like MynaPress's fence info string.
+  start = 0
+  n = #low
+  %? start < n && in_text(low[start], " \t\r\n") {
+    start += 1
+  }
+  end = start
+  %? end < n && !in_text(low[end], " \t\r\n") {
+    end += 1
+  }
+  word = low[start:end]
+  ? word == "" {
+    ^ "text"
+  }
+  ? word == "mn" || word == "myna" {
+    ^ "myna"
+  }
+  ? word == "py" || word == "python" || word == "python3" || word == "py3" {
+    ^ "python"
+  }
+  ? word == "js" || word == "javascript" || word == "mjs" || word == "node" || word == "jsx" {
+    ^ "javascript"
+  }
+  ? word == "toml" {
+    ^ "toml"
+  }
+  ? word == "yaml" || word == "yml" {
+    ^ "yaml"
+  }
+  ? word == "sh" || word == "bash" || word == "shell" || word == "console" || word == "zsh" {
+    ^ "bash"
+  }
+  ? word == "html" || word == "xml" || word == "xhtml" {
+    ^ "html"
+  }
+  ? word == "md" || word == "markdown" {
+    ^ "markdown"
+  }
+  ? word == "jinja" || word == "template" || word == "myna-template" || word == "mynatemplate" {
+    ^ "template"
+  }
+  ? word == "text" || word == "plain" || word == "txt" {
+    ^ "text"
+  }
+  ^ "text"
+}
+
+@scan_language(code:s, lang:s)->[A] {
+  name = normalize_lang(lang)
+  ? name == "myna" {
+    ^ scan_myna(code)
+  }
+  ? name == "python" {
+    ^ scan_python(code)
+  }
+  ? name == "javascript" {
+    ^ scan_javascript(code)
+  }
+  ? name == "toml" || name == "yaml" {
+    ^ scan_config(code)
+  }
+  ? name == "bash" {
+    ^ scan_shell(code)
+  }
+  ? name == "html" || name == "template" {
+    ^ scan_markup(code, "html")
+  }
+  ? name == "markdown" {
+    ^ scan_markup(code, "markdown")
+  }
+  ^ [["text", code]]
+}
+
+@highlight_code(code:s, lang:s="myna", line_numbers:b=F)->s {
+  tokens = scan_language(code, lang)
+  ^ render_inner(tokens, line_numbers)
+}
+
+@highlight_block(code:s, lang:s="myna", line_numbers:b=F)->s {
+  name = normalize_lang(lang)
+  attr = html_escape_attr(name)
+  inner = highlight_code(code, lang, line_numbers)
+  ^ `<pre class="hl"><code class="language-{attr}">{inner}</code></pre>`
+}
+
+@pre_has_hl(open_tag:s)->b {
+  # Detect a class attribute containing the standalone token `hl`.
+  pos = find_sub(open_tag, "class=", 0)
+  %? pos >= 0 {
+    q = pos + 6
+    quote = ""
+    ? q < #open_tag && (open_tag[q] == '"' || open_tag[q] == "'") {
+      quote = open_tag[q]
+      q += 1
+    }
+    end = q
+    %? end < #open_tag && (quote == "" ? !in_text(open_tag[end], " \t\r\n>") : open_tag[end] != quote) {
+      end += 1
+    }
+    classes = open_tag[q:end]
+    parts = classes.split(" ")
+    % part <- parts {
+      ? part == "hl" {
+        ^ T
+      }
+    }
+    pos = find_sub(open_tag, "class=", end)
+  }
+  ^ F
+}
+
+@code_language(open_tag:s)->s {
+  pos = find_sub(open_tag, "language-", 0)
+  prefix = 9
+  ? pos < 0 {
+    pos = find_sub(open_tag, "lang-", 0)
+    prefix = 5
+  }
+  ? pos < 0 {
+    ^ ""
+  }
+  j = pos + prefix
+  %? j < #open_tag && !in_text(open_tag[j], " \t\r\n\"'>/") {
+    j += 1
+  }
+  ^ open_tag[pos + prefix:j]
+}
+
+@highlight_html_document(html:s)->s {
+  out = []
+  n = #html
+  i = 0
+  %? i < n {
+    start = find_sub(html, "<pre", i)
+    ? start < 0 {
+      out.append(html[i:])
+      ^!
+    }
+    # Avoid matching `<prefix>`; a real pre tag ends its name here.
+    boundary = start + 4
+    ? boundary < n && !in_text(html[boundary], " \t\r\n>/") {
+      out.append(html[i:boundary])
+      i = boundary
+      ^>
+    }
+    out.append(html[i:start])
+    open_end = find_sub(html, ">", start)
+    ? open_end < 0 {
+      out.append(html[start:])
+      i = n
+      ^>
+    }
+    pre_open = html[start:open_end + 1]
+    ? pre_has_hl(pre_open) {
+      pre_close = find_sub(html, "</pre>", open_end + 1)
+      ? pre_close < 0 {
+        out.append(html[start:])
+        i = n
+        ^>
+      }
+      out.append(html[start:pre_close + 6])
+      i = pre_close + 6
+      ^>
+    }
+    pre_close = find_sub(html, "</pre>", open_end + 1)
+    code_start = find_sub(html, "<code", open_end + 1)
+    ? code_start < 0 || (pre_close >= 0 && code_start > pre_close) {
+      ? pre_close < 0 {
+        out.append(html[start:])
+        i = n
+      } : {
+        out.append(html[start:pre_close + 6])
+        i = pre_close + 6
+      }
+      ^>
+    }
+    code_open_end = find_sub(html, ">", code_start)
+    ? code_open_end < 0 {
+      out.append(html[start:])
+      i = n
+      ^>
+    }
+    code_open = html[code_start:code_open_end + 1]
+    code_close = find_sub(html, "</code>", code_open_end + 1)
+    ? code_close < 0 {
+      out.append(html[start:])
+      i = n
+      ^>
+    }
+    lang = code_language(code_open)
+    raw = html_unescape(html[code_open_end + 1:code_close])
+    rendered = highlight_code(raw, lang)
+    code_class = ""
+    ? lang != "" {
+      code_class = ` class="language-{html_escape_attr(lang)}"`
+    }
+    out.append(`<pre class="hl"><code{code_class}>{rendered}</code></pre>`)
+    end_pre = find_sub(html, "</pre>", code_close + 7)
+    ? end_pre < 0 {
+      i = code_close + 7
+    } : {
+      i = end_pre + 6
+    }
+  }
+  ^ join_str(out)
+}
+
+@uses_mynashine_css(css:s)->b {
+  ^ find_sub(css, "/* mynashine:start */", 0) >= 0
+}

@@ -1,0 +1,153 @@
+@target(py, js)
+<.util:{join_str}
+
+# CSS themes.  The default `mynapress` theme reuses MynaPress's --code-bg and
+# --fg custom properties when they exist, and supplies its own fallbacks so the
+# stylesheet also works on a plain page.
+
+@theme_light_vars()->s {
+  ^ join_str([
+    "--hl-bg:#f0ede5;",
+    "--hl-fg:#1d1d1b;",
+    "--hl-kw:#9d174d;",
+    "--hl-decl:#6d28d9;",
+    "--hl-imp:#0f766e;",
+    "--hl-dec:#92400e;",
+    "--hl-fn:#1d4ed8;",
+    "--hl-cls:#a21caf;",
+    "--hl-type:#0e7490;",
+    "--hl-bi:#7c2d12;",
+    "--hl-self:#4338ca;",
+    "--hl-const:#b91c1c;",
+    "--hl-num:#9a3412;",
+    "--hl-str:#166534;",
+    "--hl-interp:#854d0e;",
+    "--hl-op:#475569;",
+    "--hl-punc:#57534e;",
+    "--hl-com:#57606a;"
+  ])
+}
+
+@theme_dark_vars()->s {
+  ^ join_str([
+    "--hl-bg:#24231f;",
+    "--hl-fg:#f0ede5;",
+    "--hl-kw:#f9a8d4;",
+    "--hl-decl:#c4b5fd;",
+    "--hl-imp:#5eead4;",
+    "--hl-dec:#fcd34d;",
+    "--hl-fn:#93c5fd;",
+    "--hl-cls:#f0abfc;",
+    "--hl-type:#67e8f9;",
+    "--hl-bi:#fdba74;",
+    "--hl-self:#a5b4fc;",
+    "--hl-const:#fca5a5;",
+    "--hl-num:#86efac;",
+    "--hl-str:#bef264;",
+    "--hl-interp:#fde047;",
+    "--hl-op:#cbd5e1;",
+    "--hl-punc:#a8a29e;",
+    "--hl-com:#9ca3af;"
+  ])
+}
+
+@theme_hc_vars()->s {
+  ^ join_str([
+    "--hl-bg:#000000;",
+    "--hl-fg:#ffffff;",
+    "--hl-kw:#ff8bd1;",
+    "--hl-decl:#c9b6ff;",
+    "--hl-imp:#5ffff0;",
+    "--hl-dec:#ffe066;",
+    "--hl-fn:#8bd3ff;",
+    "--hl-cls:#ff9bff;",
+    "--hl-type:#7ff6ff;",
+    "--hl-bi:#ffb86b;",
+    "--hl-self:#b3c0ff;",
+    "--hl-const:#ff9b9b;",
+    "--hl-num:#9dffb0;",
+    "--hl-str:#d6ff7a;",
+    "--hl-interp:#fff36b;",
+    "--hl-op:#ffffff;",
+    "--hl-punc:#e5e5e5;",
+    "--hl-com:#d0d0d0;"
+  ])
+}
+
+@theme_vars(theme:s, dark:b=F)->s {
+  name = theme
+  ? name == "" || name == "mynapress" || name == "default" {
+    ? dark {
+      ^ theme_dark_vars()
+    }
+    ^ theme_light_vars()
+  }
+  ? name == "light" {
+    ^ theme_light_vars()
+  }
+  ? name == "dark" {
+    ^ theme_dark_vars()
+  }
+  ? name == "high-contrast" || name == "hc" {
+    ^ theme_hc_vars()
+  }
+  ^ theme_light_vars()
+}
+
+@theme_rules()->s {
+  ^ join_str([
+    "pre.hl{overflow-x:auto;padding:1rem;border-radius:6px;background:var(--hl-bg,var(--code-bg,#f0ede5));color:var(--hl-fg,var(--fg,#1d1d1b));line-height:1.6;font-size:.9rem;tab-size:2;}",
+    "pre.hl code{background:none;padding:0;color:inherit;font:inherit;white-space:pre;}",
+    "pre.hl .hl-line{display:block;}",
+    "pre.hl .hl-line::before{content:attr(data-line);display:inline-block;width:2.5ch;margin-right:1.25ch;text-align:right;color:var(--hl-com,#57606a);opacity:.8;user-select:none;}",
+    ".hl-kw{color:var(--hl-kw,#9d174d);font-weight:600;}",
+    ".hl-decl{color:var(--hl-decl,#6d28d9);font-weight:600;}",
+    ".hl-imp{color:var(--hl-imp,#0f766e);font-weight:600;}",
+    ".hl-dec{color:var(--hl-dec,#92400e);}",
+    ".hl-fn{color:var(--hl-fn,#1d4ed8);}",
+    ".hl-cls{color:var(--hl-cls,#a21caf);}",
+    ".hl-type{color:var(--hl-type,#0e7490);}",
+    ".hl-bi{color:var(--hl-bi,#7c2d12);}",
+    ".hl-self{color:var(--hl-self,#4338ca);font-style:italic;}",
+    ".hl-const{color:var(--hl-const,#b91c1c);}",
+    ".hl-num{color:var(--hl-num,#9a3412);}",
+    ".hl-str{color:var(--hl-str,#166534);}",
+    ".hl-interp{color:var(--hl-interp,#854d0e);}",
+    ".hl-op{color:var(--hl-op,#475569);}",
+    ".hl-punc{color:var(--hl-punc,#57534e);}",
+    ".hl-com{color:var(--hl-com,#57606a);font-style:italic;}"
+  ])
+}
+
+@default_css(theme:s="mynapress")->s {
+  name = theme
+  ? name == "" {
+    name = "mynapress"
+  }
+  ? name == "mynapress" || name == "default" {
+    ^ join_str([
+      ":root{color-scheme:light dark;", theme_light_vars(), "}\n",
+      "@media (prefers-color-scheme: dark){:root{", theme_dark_vars(), "}}\n",
+      theme_rules(), "\n"
+    ])
+  }
+  ? name == "light" {
+    ^ join_str([
+      ":root{color-scheme:light;", theme_light_vars(), "}\n",
+      theme_rules(), "\n"
+    ])
+  }
+  ? name == "dark" {
+    ^ join_str([
+      ":root{color-scheme:dark;", theme_dark_vars(), "}\n",
+      theme_rules(), "\n"
+    ])
+  }
+  ? name == "high-contrast" || name == "hc" {
+    ^ join_str([
+      ":root{color-scheme:dark;", theme_hc_vars(), "}\n",
+      theme_rules(), "\n"
+    ])
+  }
+  ^ default_css("mynapress")
+}

@@ -1,0 +1,162 @@
+@target(py)
+<random
+<.harness:{new_results, eq_i, eq_s, eq_b, check, contains, not_contains, kind_nth, kind_in, lossless, summary}
+<.src.highlight:{highlight_code, highlight_block}
+<.src.lang_py:{scan_python}
+<.src.lang_js:{scan_javascript}
+<.src.lang_config:{scan_config}
+<.src.lang_shell:{scan_shell}
+<.src.lang_markup:{scan_markup}
+
+@random_blob(chars:[s], max_len:i)->s {
+  out = []
+  n = random.randint(0, max_len)
+  i = 0
+  %? i < n {
+    out.append(random.choice(chars))
+    i += 1
+  }
+  ^ "".join(out)
+}
+
+@run_companion_tests()->[i] {
+  r = new_results()
+
+  py = "@decorator\ndef f(x: int) -> str:\n    # note\n    return f\"hi {x}\"\n"
+  t = scan_python(py)
+  eq_s(r, kind_in(t, "@decorator", "dec"), T, "python decorator")
+  eq_s(r, kind_nth(t, "def", 0), "kw", "python def keyword")
+  eq_s(r, kind_nth(t, "f", 0), "fn", "python function name")
+  eq_s(r, kind_nth(t, "# note", 0), "com", "python comment")
+  eq_s(r, kind_nth(t, "f\"hi {x}\"", 0), "str", "python f-string")
+  lossless(r, py, "python", "python lossless")
+
+  js = "const x = `hi ${y}`; // note\nfunction f(a) { return a; }\n"
+  t = scan_javascript(js)
+  eq_s(r, kind_nth(t, "const", 0), "kw", "js const keyword")
+  eq_s(r, kind_nth(t, "`hi ${y}`", 0), "str", "js template literal")
+  eq_s(r, kind_nth(t, "// note", 0), "com", "js line comment")
+  eq_s(r, kind_nth(t, "function", 0), "kw", "js function keyword")
+  eq_s(r, kind_nth(t, "f", 0), "fn", "js function name")
+  lossless(r, js, "javascript", "js lossless")
+  t = scan_javascript("/* multi\nline */\nclass Page {}\n")
+  eq_s(r, kind_nth(t, "/* multi\nline */", 0), "com", "js block comment")
+  eq_s(r, kind_nth(t, "Page", 0), "cls", "js class name")
+
+  toml = "title = \"Hi\"\n[site]\nok = true\n# note\n"
+  t = scan_config(toml)
+  eq_s(r, kind_nth(t, "title", 0), "fn", "toml key")
+  eq_s(r, kind_nth(t, "site", 0), "cls", "toml section")
+  eq_s(r, kind_nth(t, "true", 0), "const", "toml boolean")
+  eq_s(r, kind_nth(t, "# note", 0), "com", "toml comment")
+  lossless(r, toml, "toml", "toml lossless")
+
+  yaml = "---\ntitle: Hi\nok: true\n# note\n"
+  t = scan_config(yaml)
+  eq_s(r, kind_nth(t, "---", 0), "dec", "yaml front matter")
+  eq_s(r, kind_nth(t, "title", 0), "fn", "yaml key")
+  eq_s(r, kind_nth(t, "true", 0), "const", "yaml boolean")
+  lossless(r, yaml, "yaml", "yaml lossless")
+
+  sh = "$ ls -la --color\n# note\nFOO=1\n"
+  t = scan_shell(sh)
+  eq_s(r, kind_nth(t, "$", 0), "dec", "shell prompt")
+  eq_s(r, kind_nth(t, "ls", 0), "fn", "shell command")
+  eq_s(r, kind_nth(t, "-la", 0), "bi", "shell short flag")
+  eq_s(r, kind_nth(t, "--color", 0), "bi", "shell long flag")
+  eq_s(r, kind_nth(t, "# note", 0), "com", "shell comment")
+  lossless(r, sh, "bash", "bash lossless")
+
+  markup = "<article class=\"post\">&amp; hi</article>\n"
+  t = scan_markup(markup, "html")
+  eq_s(r, kind_nth(t, "article", 0), "kw", "html tag")
+  eq_s(r, kind_nth(t, "class", 0), "fn", "html attribute")
+  eq_s(r, kind_nth(t, "\"post\"", 0), "str", "html attribute value")
+  eq_s(r, kind_nth(t, "&amp;", 0), "const", "html entity")
+  lossless(r, markup, "html", "html lossless")
+
+  jinja = "{{ post.title | default(\"x\") }}\n{% if ok %}yes{% endif %}\n"
+  t = scan_markup(jinja, "html")
+  eq_s(r, kind_nth(t, "{{", 0), "dec", "template interpolation opener")
+  eq_s(r, kind_nth(t, "default", 0), "fn", "template filter")
+  eq_s(r, kind_nth(t, "{%", 0), "dec", "template tag opener")
+  eq_s(r, kind_nth(t, "if", 0), "kw", "template keyword")
+  lossless(r, jinja, "template", "template lossless")
+
+  md = "# Title\n\n```myna\n? x { }\n```\n"
+  t = scan_markup(md, "markdown")
+  eq_s(r, kind_nth(t, "#", 0), "kw", "markdown heading marker")
+  eq_s(r, kind_nth(t, "```", 0), "dec", "markdown fence")
+  lossless(r, md, "markdown", "markdown lossless")
+
+  # Public dispatch and aliases
+  aliases = ["myna", "mn", "python", "py", "python3", "javascript", "js", "mjs", "toml", "yaml", "yml", "bash", "sh", "shell", "console", "html", "xml", "markdown", "md", "jinja", "template", "myna-template", "text", "plain", "txt", "unknown-thing"]
+  % alias <- aliases {
+    out = highlight_code("x = 1\n", alias)
+    check(r, out != "", `alias {alias} produces output`, out)
+  }
+
+  # Unknown language is a safe escaped fallback
+  odd = "<script>alert(\"x\")</script> & text\n"
+  html = highlight_code(odd, "not-a-language")
+  eq_i(r, html.find("<script>"), -1, "unknown language escapes tags")
+  contains(r, html, "&lt;script&gt;", "unknown language escapes <")
+  lossless(r, odd, "not-a-language", "unknown language lossless")
+
+  # Malformed input resilience across every scanner.
+  languages = ["myna", "python", "javascript", "toml", "yaml", "bash", "html", "markdown", "template", "text", "unknown"]
+  broken = [
+    "",
+    "\"",
+    "'",
+    "`unclosed {x",
+    "{[(",
+    "}])",
+    "@#$%^&*()",
+    "#[dec",
+    "```myna\n? x {",
+    "<div class=\"x",
+    "<!-- unclosed",
+    "//",
+    "/*",
+    "\\",
+    "a\r\nb\tc",
+    "0x",
+    "1..2",
+    "x :? [",
+    "?? v { _ => {",
+    "!{ !! !:",
+    "~@",
+    "+$",
+    "{{ x | }}",
+    "{% if",
+    "#",
+    "é漢字🙂"
+  ]
+  % lang <- languages {
+    % sample <- broken {
+      lossless(r, sample, lang, `malformed [{lang}] {sample}`)
+    }
+  }
+
+  # Deterministic random fuzz: no scanner may crash, loop, or lose a byte.
+  random.seed(20261027)
+  chaos = ["?", "%", "^", "!", "<", ">", "@", "$", "#", ":", "{", "}", "[", "]", "(", ")", "~", "`", "\"", "'", "\\", "/", "*", "+", "-", "=", "&", "|", ",", ".", ";", " ", "\n", "\t", "0", "3", "a", "Z", "_", "é", "🙂"]
+  % lang <- languages {
+    fuzz_i = 0
+    %? fuzz_i < 50 {
+      blob = random_blob(chaos, 48)
+      lossless(r, blob, lang, `fuzz [{lang}] #{fuzz_i}`)
+      fuzz_i += 1
+    }
+  }
+
+  # Line-number rendering stays lossless too.
+  numbered = highlight_code("? x {\n  ^1\n}\n", "myna", T)
+  contains(r, numbered, "hl-line", "line number wrappers")
+  contains(r, numbered, "data-line=\"2\"", "line number data")
+  lossless(r, "? x {\n  ^1\n}\n", "myna", "line number lossless")
+
+  summary("companions", r)
+  ^ r
+}

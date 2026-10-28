@@ -1,0 +1,233 @@
+@target(py, js)
+<.util:{is_digit, is_id_start, is_id_cont, is_space, in_text, in_list}
+
+# Bash / shell / console scanner.  Deliberately forgiving: unknown words and
+# punctuation become plain text rather than errors.
+
+@sh_string_end(code:s, quote_at:i)->i {
+  n = #code
+  quote = code[quote_at]
+  i = quote_at + 1
+  %? i < n {
+    ? quote == '"' && code[i] == "\\" {
+      i += 2
+      ^>
+    }
+    ? code[i] == quote {
+      ^ i + 1
+    }
+    i += 1
+  }
+  ^ n
+}
+
+@sh_word_end(code:s, i:i)->i {
+  n = #code
+  j = i
+  %? j < n && !in_text(code[j], " \t\r\n|&;<>()\"'`=$") {
+    j += 1
+  }
+  ^ j
+}
+
+@sh_keyword(word:s)->b {
+  ^ in_list(word, ["if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "function", "in", "select", "time", "coproc"])
+}
+
+@sh_builtin(word:s)->b {
+  ^ in_list(word, ["alias", "bg", "bind", "break", "builtin", "cd", "command", "continue", "declare", "dirs", "disown", "echo", "enable", "eval", "exec", "exit", "export", "false", "fc", "fg", "getopts", "hash", "help", "history", "jobs", "kill", "let", "local", "logout", "mapfile", "popd", "printf", "pushd", "pwd", "read", "readonly", "return", "set", "shift", "shopt", "source", "suspend", "test", "times", "trap", "true", "type", "typeset", "ulimit", "umask", "unalias", "unset", "wait"])
+}
+
+@sh_op_at(code:s, i:i)->s {
+  n = #code
+  candidates = ["&&", "||", ">>", "2>", "2>&1", "&>", "<<", "<>", ";;", "|&", ">&", "<&"]
+  % op <- candidates {
+    size = #op
+    ? i + size <= n && code[i:i + size] == op {
+      ^ op
+    }
+  }
+  ^ ""
+}
+
+@scan_shell(code:s)->[A] {
+  out = []
+  n = #code
+  i = 0
+  line_start = T
+  command_start = T
+  %? i < n {
+    ch = code[i]
+    ? ch == "\n" {
+      out.append(["ws", "\n"])
+      i += 1
+      line_start = T
+      command_start = T
+      ^>
+    }
+    ? ch == " " || ch == "\t" || ch == "\r" {
+      j = i + 1
+      %? j < n && (code[j] == " " || code[j] == "\t" || code[j] == "\r") {
+        j += 1
+      }
+      out.append(["ws", code[i:j]])
+      i = j
+      ^>
+    }
+    ? line_start && (ch == "$" || ch == "#" || ch == ">") && i + 1 < n && (code[i + 1] == " " || code[i + 1] == "\t") {
+      ? ch == "#" {
+        j = i
+        %? j < n && code[j] != "\n" {
+          j += 1
+        }
+        out.append(["com", code[i:j]])
+        i = j
+        ^>
+      }
+      out.append(["dec", ch])
+      i += 1
+      line_start = F
+      command_start = T
+      ^>
+    }
+    ? ch == "#" && (line_start || (i > 0 && is_space(code[i - 1]))) {
+      j = i
+      %? j < n && code[j] != "\n" {
+        j += 1
+      }
+      out.append(["com", code[i:j]])
+      i = j
+      ^>
+    }
+    ? ch == '"' || ch == "'" {
+      end = sh_string_end(code, i)
+      out.append(["str", code[i:end]])
+      i = end
+      command_start = F
+      line_start = F
+      ^>
+    }
+    ? ch == "$" {
+      j = i + 1
+      ? j < n && code[j] == "{" {
+        close = -1
+        k = j + 1
+        %? k < n {
+          ? code[k] == "}" {
+            close = k + 1
+            ^!
+          }
+          k += 1
+        }
+        ? close >= 0 {
+          out.append(["const", code[i:close]])
+          i = close
+        } : {
+          out.append(["op", "$"])
+          i += 1
+        }
+      } : {
+        j2 = j
+        %? j2 < n && is_id_cont(code[j2]) {
+          j2 += 1
+        }
+        ? j2 > j {
+          out.append(["const", code[i:j2]])
+          i = j2
+        } : {
+          out.append(["op", "$"])
+          i += 1
+        }
+      }
+      command_start = F
+      line_start = F
+      ^>
+    }
+    ? ch == "-" {
+      j = i + 1
+      ? j < n && code[j] == "-" {
+        j += 1
+      }
+      %? j < n && (is_id_cont(code[j]) || code[j] == "-") {
+        j += 1
+      }
+      ? j > i + 1 {
+        out.append(["bi", code[i:j]])
+        i = j
+      } : {
+        out.append(["op", "-"])
+        i += 1
+      }
+      command_start = F
+      line_start = F
+      ^>
+    }
+    op = sh_op_at(code, i)
+    ? op != "" {
+      out.append(["op", op])
+      i += #op
+      command_start = T
+      line_start = F
+      ^>
+    }
+    ? ch == "|" || ch == "&" || ch == ";" || ch == ">" || ch == "<" || ch == "(" || ch == ")" {
+      out.append(["op", ch])
+      i += 1
+      command_start = T
+      line_start = F
+      ^>
+    }
+    ? is_digit(ch) {
+      j = i + 1
+      %? j < n && (is_digit(code[j]) || code[j] == ".") {
+        j += 1
+      }
+      out.append(["num", code[i:j]])
+      i = j
+      command_start = F
+      line_start = F
+      ^>
+    }
+    ? is_id_start(ch) || ch == "/" || ch == "." {
+      end = sh_word_end(code, i)
+      word = code[i:end]
+      kind = "id"
+      low = word
+      ? command_start && sh_builtin(low) {
+        kind = "fn"
+      } :? command_start && sh_keyword(low) {
+        kind = "kw"
+      } :? command_start {
+        kind = "fn"
+      } :? sh_keyword(low) {
+        kind = "kw"
+      } :? sh_builtin(low) {
+        kind = "bi"
+      }
+      out.append([kind, word])
+      i = end
+      command_start = F
+      line_start = F
+      ^>
+    }
+    ? in_text(ch, "[]{}=") {
+      out.append(["punc", ch])
+      i += 1
+      command_start = F
+      line_start = F
+      ^>
+    }
+    ? ch == "\\" && i + 1 < n {
+      out.append(["op", code[i:i + 2]])
+      i += 2
+      command_start = F
+      line_start = F
+      ^>
+    }
+    out.append(["text", ch])
+    i += 1
+    command_start = F
+    line_start = F
+  }
+  ^ out
+}

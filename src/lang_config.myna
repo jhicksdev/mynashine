@@ -1,0 +1,198 @@
+@target(py, js)
+<.util:{is_digit, is_id_start, is_id_cont, is_space, in_text, in_list, lower_ascii}
+
+# TOML / YAML / front-matter scanner.
+
+@cfg_string_end(code:s, quote_at:i)->i {
+  n = #code
+  quote = code[quote_at]
+  triple = quote_at + 2 < n && code[quote_at + 1] == quote && code[quote_at + 2] == quote
+  i = quote_at + 1
+  ? triple {
+    i = quote_at + 3
+  }
+  %? i < n {
+    ? quote != "'" && code[i] == "\\" {
+      i += 2
+      ^>
+    }
+    ? triple {
+      ? i + 2 < n && code[i] == quote && code[i + 1] == quote && code[i + 2] == quote {
+        ^ i + 3
+      }
+    } : {
+      ? code[i] == quote {
+        ^ i + 1
+      }
+    }
+    i += 1
+  }
+  ^ n
+}
+
+@cfg_ident_end(code:s, i:i)->i {
+  j = i
+  %? j < #code && (is_id_cont(code[j]) || code[j] == "-" || code[j] == ".") {
+    j += 1
+  }
+  ^ j
+}
+
+@cfg_number_end(code:s, i:i)->i {
+  n = #code
+  j = i
+  ? j + 1 < n && code[j] == "0" && in_text(code[j + 1], "xXoObB") {
+    j += 2
+    %? j < n && (is_id_cont(code[j]) || code[j] == "_") {
+      j += 1
+    }
+    ^ j
+  }
+  %? j < n && (is_digit(code[j]) || code[j] == "_" || code[j] == "-" || code[j] == ":" || code[j] == "." || code[j] == "+" || in_text(code[j], "eE")) {
+    j += 1
+  }
+  ^ j
+}
+
+@cfg_key_end(code:s, i:i)->i {
+  n = #code
+  j = i
+  ? j < n && (code[j] == '"' || code[j] == "'") {
+    j = cfg_string_end(code, j)
+  } : {
+    j = cfg_ident_end(code, j)
+  }
+  ? j <= i {
+    ^ -1
+  }
+  k = j
+  %? k < n && (code[k] == " " || code[k] == "\t") {
+    k += 1
+  }
+  ? k < n && (code[k] == "=" || code[k] == ":") {
+    ^ j
+  }
+  ^ -1
+}
+
+@cfg_const(word:s)->b {
+  low = lower_ascii(word)
+  ^ in_list(low, ["true", "false", "yes", "no", "on", "off", "null", "none", "~"])
+}
+
+@scan_config(code:s)->[A] {
+  out = []
+  n = #code
+  i = 0
+  line_start = T
+  in_section = F
+  %? i < n {
+    ch = code[i]
+    ? ch == "\n" {
+      out.append(["ws", "\n"])
+      i += 1
+      line_start = T
+      in_section = F
+      ^>
+    }
+    ? in_text(ch, " \t\r") {
+      j = i + 1
+      %? j < n && in_text(code[j], " \t\r") {
+        j += 1
+      }
+      out.append(["ws", code[i:j]])
+      i = j
+      ^>
+    }
+    ? ch == "#" {
+      j = i
+      %? j < n && code[j] != "\n" {
+        j += 1
+      }
+      out.append(["com", code[i:j]])
+      i = j
+      ^>
+    }
+    ? line_start && i + 2 < n && code[i:i + 3] == "---" {
+      out.append(["dec", "---"])
+      i += 3
+      line_start = F
+      ^>
+    }
+    ? line_start && ch == "[" {
+      out.append(["punc", "["])
+      i += 1
+      j = i
+      %? j < n && code[j] != "]" && code[j] != "\n" {
+        j += 1
+      }
+      ? j > i {
+        out.append(["cls", code[i:j]])
+        i = j
+      }
+      ? i < n && code[i] == "]" {
+        out.append(["punc", "]"])
+        i += 1
+      }
+      line_start = F
+      ^>
+    }
+    ? line_start && ch == "-" && i + 1 < n && (code[i + 1] == " " || code[i + 1] == "\t") {
+      out.append(["punc", "-"])
+      i += 1
+      line_start = F
+      ^>
+    }
+    ? line_start {
+      key_end = cfg_key_end(code, i)
+      ? key_end >= 0 {
+        out.append(["fn", code[i:key_end]])
+        i = key_end
+        line_start = F
+        ^>
+      }
+    }
+    ? ch == '"' || ch == "'" {
+      end = cfg_string_end(code, i)
+      out.append(["str", code[i:end]])
+      i = end
+      line_start = F
+      ^>
+    }
+    ? is_digit(ch) || (ch == "-" && i + 1 < n && is_digit(code[i + 1])) {
+      end = cfg_number_end(code, i)
+      out.append(["num", code[i:end]])
+      i = end
+      line_start = F
+      ^>
+    }
+    ? is_id_start(ch) {
+      end = cfg_ident_end(code, i)
+      word = code[i:end]
+      kind = "id"
+      ? cfg_const(word) {
+        kind = "const"
+      }
+      out.append([kind, word])
+      i = end
+      line_start = F
+      ^>
+    }
+    ? in_text(ch, "[]{},:=|>") {
+      out.append(["punc", ch])
+      i += 1
+      line_start = F
+      ^>
+    }
+    ? in_text(ch, "+-*/%&!?.") {
+      out.append(["op", ch])
+      i += 1
+      line_start = F
+      ^>
+    }
+    out.append(["text", ch])
+    i += 1
+    line_start = F
+  }
+  ^ out
+}

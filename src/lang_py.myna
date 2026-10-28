@@ -1,0 +1,218 @@
+@target(py, js)
+<.util:{is_digit, is_id_start, is_id_cont, is_space, in_text, in_list}
+
+# Lightweight Python scanner for MynaPress documentation posts.
+
+@py_string_prefix(code:s, i:i)->[i] {
+  n = #code
+  j = i
+  %? j < n && j < i + 2 && in_text(code[j], "rRbBuUfF") {
+    j += 1
+  }
+  ? j < n && (code[j] == '"' || code[j] == "'") {
+    ^ [j - i, j]
+  }
+  ? i < n && (code[i] == '"' || code[i] == "'") {
+    ^ [0, i]
+  }
+  ^ [-1, i]
+}
+
+@py_string_end(code:s, quote_at:i)->i {
+  n = #code
+  quote = code[quote_at]
+  triple = quote_at + 2 < n && code[quote_at + 1] == quote && code[quote_at + 2] == quote
+  i = quote_at + 1
+  ? triple {
+    i = quote_at + 3
+  }
+  %? i < n {
+    ? code[i] == "\\" {
+      i += 2
+      ^>
+    }
+    ? triple {
+      ? i + 2 < n && code[i] == quote && code[i + 1] == quote && code[i + 2] == quote {
+        ^ i + 3
+      }
+    } : {
+      ? code[i] == quote {
+        ^ i + 1
+      }
+    }
+    i += 1
+  }
+  ^ n
+}
+
+@py_ident_end(code:s, i:i)->i {
+  j = i
+  %? j < #code && is_id_cont(code[j]) {
+    j += 1
+  }
+  ^ j
+}
+
+@py_number_end(code:s, i:i)->i {
+  n = #code
+  j = i
+  ? j + 1 < n && code[j] == "0" && in_text(code[j + 1], "xXoObB") {
+    j += 2
+    %? j < n && (is_id_cont(code[j]) || code[j] == "_") {
+      j += 1
+    }
+    ^ j
+  }
+  %? j < n && (is_digit(code[j]) || code[j] == "_") {
+    j += 1
+  }
+  ? j < n && code[j] == "." && !(j + 1 < n && code[j + 1] == ".") {
+    ? j + 1 < n && is_digit(code[j + 1]) {
+      j += 1
+      %? j < n && (is_digit(code[j]) || code[j] == "_") {
+        j += 1
+      }
+    }
+  }
+  ? j < n && in_text(code[j], "eE") {
+    j += 1
+    ? j < n && in_text(code[j], "+-") {
+      j += 1
+    }
+    %? j < n && (is_digit(code[j]) || code[j] == "_") {
+      j += 1
+    }
+  }
+  ? j < n && in_text(code[j], "jJ") {
+    j += 1
+  }
+  ^ j
+}
+
+@py_keyword(word:s)->b {
+  ^ in_list(word, ["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield", "match", "case"])
+}
+
+@py_builtin(word:s)->b {
+  ^ in_list(word, ["abs", "all", "any", "ascii", "bin", "bool", "bytearray", "bytes", "callable", "chr", "classmethod", "compile", "complex", "delattr", "dict", "dir", "divmod", "enumerate", "eval", "exec", "filter", "float", "format", "frozenset", "getattr", "globals", "hasattr", "hash", "help", "hex", "id", "input", "int", "isinstance", "issubclass", "iter", "len", "list", "locals", "map", "max", "memoryview", "min", "next", "object", "oct", "open", "ord", "pow", "print", "property", "range", "repr", "reversed", "round", "set", "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super", "tuple", "type", "vars", "zip"])
+}
+
+@py_op_at(code:s, i:i)->s {
+  n = #code
+  candidates = ["**=", "//=", "<<=", ">>=", "...", "**", "//", "<<", ">>", "<=", ">=", "==", "!=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", ":=", "->", "@="]
+  % op <- candidates {
+    size = #op
+    ? i + size <= n && code[i:i + size] == op {
+      ^ op
+    }
+  }
+  ^ ""
+}
+
+@scan_python(code:s)->[A] {
+  out = []
+  n = #code
+  i = 0
+  expect_name = ""
+  %? i < n {
+    ch = code[i]
+    ? in_text(ch, " \t\r") {
+      j = i + 1
+      %? j < n && in_text(code[j], " \t\r") {
+        j += 1
+      }
+      out.append(["ws", code[i:j]])
+      i = j
+      ^>
+    }
+    ? ch == "\n" {
+      out.append(["ws", "\n"])
+      i += 1
+      ^>
+    }
+    ? ch == "#" {
+      j = i
+      %? j < n && code[j] != "\n" {
+        j += 1
+      }
+      out.append(["com", code[i:j]])
+      i = j
+      ^>
+    }
+    prefix = py_string_prefix(code, i)
+    ? prefix[0] >= 0 {
+      end = py_string_end(code, prefix[1])
+      out.append(["str", code[i:end]])
+      i = end
+      expect_name = ""
+      ^>
+    }
+    ? is_digit(ch) || (ch == "." && i + 1 < n && is_digit(code[i + 1])) {
+      end = py_number_end(code, i)
+      out.append(["num", code[i:end]])
+      i = end
+      ^>
+    }
+    ? is_id_start(ch) {
+      end = py_ident_end(code, i)
+      word = code[i:end]
+      kind = "id"
+      ? word == "True" || word == "False" || word == "None" {
+        kind = "const"
+      } :? py_keyword(word) {
+        kind = "kw"
+        ? word == "def" || word == "class" {
+          expect_name = word
+        }
+      } :? expect_name == "def" {
+        kind = "fn"
+        expect_name = ""
+      } :? expect_name == "class" {
+        kind = "cls"
+        expect_name = ""
+      } :? py_builtin(word) {
+        kind = "bi"
+      } :? word == "self" || word == "cls" {
+        kind = "self"
+      }
+      out.append([kind, word])
+      i = end
+      ^>
+    }
+    ? ch == "@" {
+      end = py_ident_end(code, i + 1)
+      ? end > i + 1 {
+        out.append(["dec", code[i:end]])
+        i = end
+      } : {
+        out.append(["op", "@"])
+        i += 1
+      }
+      ^>
+    }
+    op = py_op_at(code, i)
+    ? op != "" {
+      out.append(["op", op])
+      i += #op
+      ^>
+    }
+    ? in_text(ch, "()[]{}") {
+      out.append(["punc", ch])
+      i += 1
+      ^>
+    }
+    ? in_text(ch, ",;:.") {
+      out.append(["punc", ch])
+      i += 1
+      ^>
+    }
+    ? in_text(ch, "+-*/%&|^~<>=") {
+      out.append(["op", ch])
+      i += 1
+      ^>
+    }
+    out.append(["text", ch])
+    i += 1
+  }
+  ^ out
+}

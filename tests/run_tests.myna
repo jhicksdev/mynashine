@@ -1,6 +1,7 @@
 @target(py)
 <sys
 <.test_myna_lexer:{run_myna_lexer_tests}
+<.test_companions:{run_companion_tests}
 
 @main {
   p("MynaShine test suite")
@@ -10,6 +11,9 @@
   a = run_myna_lexer_tests()
   total_p += a[0]
   total_f += a[1]
+  b = run_companion_tests()
+  total_p += b[0]
+  total_f += b[1]
   p("====================")
   p(`TOTAL: {total_p} passed, {total_f} failed`)
   ? total_f > 0 {

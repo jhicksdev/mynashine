@@ -1,6 +1,5 @@
 @target(py)
-<.src.myna_lexer:{scan_myna}
-<.src.token:{render_inner}
+<.src.highlight:{highlight_code, highlight_block, highlight_html_document}
 <.src.util:{strip_tags, html_unescape, join_str}
 
 @new_results()->[i] {
@@ -71,7 +70,7 @@
 
 @lossless(results:[i], code:s, lang:s, label:s) {
   !{
-    html = render_inner(scan_myna(code), F)
+    html = highlight_code(code, lang)
     got = html_unescape(strip_tags(html))
     ? got == code {
       results[0] += 1

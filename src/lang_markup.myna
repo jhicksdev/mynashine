@@ -1,0 +1,382 @@
+@target(py, js)
+<.util:{is_digit, is_id_start, is_id_cont, is_space, in_text, in_list, find_sub, lower_ascii}
+
+# HTML / XML / Markdown / MynaPress template scanner.
+
+@mk_string_end(code:s, quote_at:i)->i {
+  n = #code
+  quote = code[quote_at]
+  i = quote_at + 1
+  %? i < n {
+    ? code[i] == "\\" {
+      i += 2
+      ^>
+    }
+    ? code[i] == quote {
+      ^ i + 1
+    }
+    i += 1
+  }
+  ^ n
+}
+
+@mk_attr_end(code:s, i:i)->i {
+  n = #code
+  j = i
+  %? j < n && !in_text(code[j], " \t\r\n=>\"'") {
+    j += 1
+  }
+  ^ j
+}
+
+@mk_tag_name_end(code:s, i:i)->i {
+  n = #code
+  j = i
+  %? j < n && (is_id_cont(code[j]) || code[j] == "-" || code[j] == ":") {
+    j += 1
+  }
+  ^ j
+}
+
+@mk_template_keyword(word:s)->b {
+  low = lower_ascii(word)
+  ^ in_list(low, ["if", "else", "elif", "endif", "for", "endfor", "in", "not", "and", "or", "is", "block", "endblock", "extends", "include", "import", "from", "set", "with", "endwith", "macro", "endmacro", "filter", "endfilter", "raw", "endraw"])
+}
+
+@scan_template_expr(inner:s)->[A] {
+  out = []
+  n = #inner
+  i = 0
+  after_pipe = F
+  %? i < n {
+    ch = inner[i]
+    ? in_text(ch, " \t\r\n") {
+      j = i + 1
+      %? j < n && in_text(inner[j], " \t\r\n") {
+        j += 1
+      }
+      out.append(["ws", inner[i:j]])
+      i = j
+      ^>
+    }
+    ? ch == '"' || ch == "'" {
+      end = mk_string_end(inner, i)
+      out.append(["str", inner[i:end]])
+      i = end
+      after_pipe = F
+      ^>
+    }
+    ? is_digit(ch) {
+      j = i + 1
+      %? j < n && (is_digit(inner[j]) || inner[j] == ".") {
+        j += 1
+      }
+      out.append(["num", inner[i:j]])
+      i = j
+      after_pipe = F
+      ^>
+    }
+    ? is_id_start(ch) {
+      j = i + 1
+      %? j < n && is_id_cont(inner[j]) {
+        j += 1
+      }
+      word = inner[i:j]
+      low = lower_ascii(word)
+      kind = "id"
+      ? in_list(low, ["true", "false", "none", "null", "undefined"]) {
+        kind = "const"
+      } :? mk_template_keyword(word) {
+        kind = "kw"
+      } :? after_pipe {
+        kind = "fn"
+      }
+      out.append([kind, word])
+      i = j
+      after_pipe = F
+      ^>
+    }
+    ? ch == "|" {
+      out.append(["op", "|"])
+      i += 1
+      after_pipe = T
+      ^>
+    }
+    ? in_text(ch, "=!<>~+-*/%") {
+      out.append(["op", ch])
+      i += 1
+      after_pipe = F
+      ^>
+    }
+    ? in_text(ch, "()[]{},") {
+      out.append(["punc", ch])
+      i += 1
+      after_pipe = F
+      ^>
+    }
+    ? ch == "." || ch == ":" {
+      out.append(["punc", ch])
+      i += 1
+      after_pipe = F
+      ^>
+    }
+    out.append(["text", ch])
+    i += 1
+    after_pipe = F
+  }
+  ^ out
+}
+
+@scan_tag(code:s, start:i)->A {
+  out = []
+  n = #code
+  i = start + 1
+  out.append(["punc", "<"])
+  ? i < n && code[i] == "/" {
+    out.append(["punc", "/"])
+    i += 1
+  }
+  j = mk_tag_name_end(code, i)
+  ? j > i {
+    out.append(["kw", code[i:j]])
+    i = j
+  }
+  %? i < n {
+    ch = code[i]
+    ? in_text(ch, " \t\r\n") {
+      k = i + 1
+      %? k < n && in_text(code[k], " \t\r\n") {
+        k += 1
+      }
+      out.append(["ws", code[i:k]])
+      i = k
+      ^>
+    }
+    ? ch == ">" {
+      out.append(["punc", ">"])
+      ^ [out, i + 1]
+    }
+    ? ch == "/" && i + 1 < n && code[i + 1] == ">" {
+      out.append(["punc", "/>"])
+      ^ [out, i + 2]
+    }
+    ? ch == "=" {
+      out.append(["op", "="])
+      i += 1
+      ^>
+    }
+    ? ch == '"' || ch == "'" {
+      end = mk_string_end(code, i)
+      out.append(["str", code[i:end]])
+      i = end
+      ^>
+    }
+    ? ch == "{" && i + 1 < n && (code[i + 1] == "{" || code[i + 1] == "%") {
+      inner_end = find_sub(code, code[i + 1] == "{" ? "}}" : "%}", i + 2)
+      close_size = 2
+      ? inner_end < 0 {
+        inner_end = n
+        close_size = 0
+      }
+      out.append(["dec", code[i:i + 2]])
+      % token <- scan_template_expr(code[i + 2:inner_end]) {
+        out.append(token)
+      }
+      ? close_size > 0 {
+        out.append(["dec", code[inner_end:inner_end + close_size]])
+      }
+      i = inner_end + close_size
+      ^>
+    }
+    ? is_id_start(ch) || ch == ":" || ch == "@" {
+      end = mk_attr_end(code, i)
+      ? end > i {
+        out.append(["fn", code[i:end]])
+        i = end
+      } : {
+        out.append(["text", ch])
+        i += 1
+      }
+      ^>
+    }
+    out.append(["text", ch])
+    i += 1
+  }
+  ^ [out, i]
+}
+
+@scan_markup(code:s, mode:s)->[A] {
+  out = []
+  n = #code
+  i = 0
+  line_start = T
+  in_fence = F
+  %? i < n {
+    ch = code[i]
+
+    ? mode == "markdown" && in_fence && ch != "\n" {
+      ? line_start && i + 2 < n && code[i:i + 3] == "```" {
+        out.append(["dec", "```"])
+        i += 3
+        in_fence = F
+        line_start = F
+        ^>
+      }
+      j = i
+      %? j < n && code[j] != "\n" {
+        j += 1
+      }
+      ? j > i {
+        out.append(["text", code[i:j]])
+        i = j
+      }
+      ^>
+    }
+
+    ? ch == "\n" {
+      out.append(["ws", "\n"])
+      i += 1
+      line_start = T
+      ^>
+    }
+
+    ? ch == " " || ch == "\t" || ch == "\r" {
+      j = i + 1
+      %? j < n && (code[j] == " " || code[j] == "\t" || code[j] == "\r") {
+        j += 1
+      }
+      out.append(["ws", code[i:j]])
+      i = j
+      ^>
+    }
+
+    ? mode == "markdown" && line_start && i + 2 < n && code[i:i + 3] == "```" {
+      out.append(["dec", "```"])
+      i += 3
+      in_fence = T
+      line_start = F
+      ^>
+    }
+
+    ? mode == "markdown" && line_start && ch == "#" {
+      j = i
+      %? j < n && code[j] == "#" {
+        j += 1
+      }
+      out.append(["kw", code[i:j]])
+      i = j
+      line_start = F
+      ^>
+    }
+
+    ? mode == "markdown" && line_start && (ch == "-" || ch == "*" || ch == "+") && i + 1 < n && code[i + 1] == " " {
+      out.append(["kw", ch])
+      i += 1
+      line_start = F
+      ^>
+    }
+
+    ? mode == "markdown" && line_start && ch == ">" {
+      out.append(["op", ">"])
+      i += 1
+      line_start = F
+      ^>
+    }
+
+    ? ch == "<" && i + 3 < n && code[i:i + 4] == "<!--" {
+      close = find_sub(code, "-->", i + 4)
+      ? close < 0 {
+        out.append(["com", code[i:]])
+        i = n
+        ^>
+      }
+      out.append(["com", code[i:close + 3]])
+      i = close + 3
+      line_start = F
+      ^>
+    }
+
+    ? ch == "<" && i + 1 < n && code[i + 1] == "!" {
+      close = find_sub(code, ">", i + 2)
+      ? close < 0 {
+        out.append(["text", code[i:]])
+        i = n
+        ^>
+      }
+      out.append(["dec", code[i:close + 1]])
+      i = close + 1
+      line_start = F
+      ^>
+    }
+
+    ? ch == "<" && i + 1 < n && (code[i + 1] == "/" || is_id_start(code[i + 1])) {
+      tag = scan_tag(code, i)
+      % token <- tag[0] {
+        out.append(token)
+      }
+      i = tag[1]
+      line_start = F
+      ^>
+    }
+
+    ? ch == "{" && i + 1 < n && (code[i + 1] == "{" || code[i + 1] == "%") {
+      opener = code[i:i + 2]
+      closer = opener == "{{" ? "}}" : "%}"
+      inner_end = find_sub(code, closer, i + 2)
+      ? inner_end < 0 {
+        out.append(["dec", opener])
+        % token <- scan_template_expr(code[i + 2:]) {
+          out.append(token)
+        }
+        i = n
+        ^>
+      }
+      out.append(["dec", opener])
+      % token <- scan_template_expr(code[i + 2:inner_end]) {
+        out.append(token)
+      }
+      out.append(["dec", closer])
+      i = inner_end + 2
+      line_start = F
+      ^>
+    }
+
+    ? ch == "&" {
+      semi = find_sub(code, ";", i + 1)
+      ? semi >= 0 && semi - i <= 12 {
+        out.append(["const", code[i:semi + 1]])
+        i = semi + 1
+        ^>
+      }
+    }
+
+    ? mode == "markdown" && ch == "`" {
+      j = i
+      %? j < n && code[j] == "`" {
+        j += 1
+      }
+      out.append(["dec", code[i:j]])
+      i = j
+      ^>
+    }
+
+    ? mode == "markdown" && in_text(ch, "*_~") {
+      j = i + 1
+      %? j < n && code[j] == ch {
+        j += 1
+      }
+      out.append(["op", code[i:j]])
+      i = j
+      ^>
+    }
+
+    j = i + 1
+    %? j < n && !in_text(code[j], "<&\n{}`*_~") {
+      j += 1
+    }
+    out.append(["text", code[i:j]])
+    i = j
+    line_start = F
+  }
+  ^ out
+}
