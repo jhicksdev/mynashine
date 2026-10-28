@@ -1,0 +1,206 @@
+@target(py, js)
+
+# Portable character, string and HTML helpers.
+# Everything here avoids Python-only string methods so the core can also be
+# compiled with `myna compile -t js`.
+
+@is_digit(ch:s)->b {
+  ^ ch >= "0" && ch <= "9"
+}
+
+@is_alpha(ch:s)->b {
+  ^ (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_" || ch > "~"
+}
+
+@is_id_start(ch:s)->b {
+  ^ (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_" || ch > "~"
+}
+
+@is_id_cont(ch:s)->b {
+  ^ is_id_start(ch) || is_digit(ch)
+}
+
+@is_space(ch:s)->b {
+  ^ ch == " " || ch == "\t" || ch == "\r"
+}
+
+@is_newline(ch:s)->b {
+  ^ ch == "\n"
+}
+
+@in_text(needle:s, hay:s)->b {
+  i = 0
+  n = #needle
+  ? n == 0 {
+    ^ T
+  }
+  %? i + n <= #hay {
+    ? hay[i:i + n] == needle {
+      ^ T
+    }
+    i += 1
+  }
+  ^ F
+}
+
+@in_list(value:s, items:[s])->b {
+  % item <- items {
+    ? item == value {
+      ^ T
+    }
+  }
+  ^ F
+}
+
+@char_index(hay:s, ch:s)->i {
+  i = 0
+  %? i < #hay {
+    ? hay[i] == ch {
+      ^ i
+    }
+    i += 1
+  }
+  ^ -1
+}
+
+@lower_ascii(s:s)->s {
+  upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  lower = "abcdefghijklmnopqrstuvwxyz"
+  out = []
+  % ch <- s {
+    idx = char_index(upper, ch)
+    ? idx >= 0 {
+      out.append(lower[idx:idx + 1])
+    } : {
+      out.append(ch)
+    }
+  }
+  ^ join_str(out)
+}
+
+@join_str(parts:[s])->s {
+  out = ""
+  % part <- parts {
+    out += part
+  }
+  ^ out
+}
+
+@find_sub(s:s, needle:s, start:i)->i {
+  n = #needle
+  ? n == 0 {
+    ^ start
+  }
+  i = start
+  ? i < 0 {
+    i = 0
+  }
+  %? i + n <= #s {
+    ? s[i:i + n] == needle {
+      ^ i
+    }
+    i += 1
+  }
+  ^ -1
+}
+
+@strip_tags(s:s)->s {
+  out = []
+  i = 0
+  n = #s
+  %? i < n {
+    ch = s[i]
+    ? ch == "<" {
+      close = find_sub(s, ">", i + 1)
+      ? close >= 0 {
+        i = close + 1
+        ^>
+      }
+    }
+    out.append(ch)
+    i += 1
+  }
+  ^ join_str(out)
+}
+
+@html_escape(s:s)->s {
+  out = []
+  % ch <- s {
+    ? ch == "&" {
+      out.append("&amp;")
+    } :? ch == "<" {
+      out.append("&lt;")
+    } :? ch == ">" {
+      out.append("&gt;")
+    } : {
+      out.append(ch)
+    }
+  }
+  ^ join_str(out)
+}
+
+@html_escape_attr(s:s)->s {
+  out = []
+  % ch <- s {
+    ? ch == "&" {
+      out.append("&amp;")
+    } :? ch == "<" {
+      out.append("&lt;")
+    } :? ch == ">" {
+      out.append("&gt;")
+    } :? ch == '"' {
+      out.append("&quot;")
+    } :? ch == "'" {
+      out.append("&#39;")
+    } : {
+      out.append(ch)
+    }
+  }
+  ^ join_str(out)
+}
+
+@entity_value(name:s)->s {
+  ? name == "amp" || name == "#38" || name == "#x26" || name == "#X26" {
+    ^ "&"
+  }
+  ? name == "lt" || name == "#60" || name == "#x3c" || name == "#x3C" {
+    ^ "<"
+  }
+  ? name == "gt" || name == "#62" || name == "#x3e" || name == "#x3E" {
+    ^ ">"
+  }
+  ? name == "quot" || name == "#34" || name == "#x22" || name == "#X22" {
+    ^ "\""
+  }
+  ? name == "apos" || name == "#39" || name == "#x27" || name == "#X27" {
+    ^ "'"
+  }
+  ? name == "nbsp" || name == "#160" || name == "#xa0" || name == "#xA0" {
+    ^ " "
+  }
+  ^ ""
+}
+
+@html_unescape(s:s)->s {
+  out = []
+  i = 0
+  n = #s
+  %? i < n {
+    ch = s[i]
+    ? ch == "&" {
+      semi = find_sub(s, ";", i + 1)
+      ? semi >= 0 && semi - i <= 12 {
+        name = s[i + 1:semi]
+        value = entity_value(name)
+        ? value != "" {
+          out.append(value)
+          i = semi + 1
+          ^>
+        }
+      }
+    }
+    out.append(ch)
+    i += 1
+  }
+  ^ join_str(out)
+}

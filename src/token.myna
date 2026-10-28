@@ -1,0 +1,146 @@
+@target(py, js)
+<.util:{html_escape, join_str, in_list}
+
+# A token is the tiny portable pair [kind, text].  Keeping tokens as two-item
+# lists (instead of a dataclass) means the exact same code compiles to Python
+# and JavaScript.
+
+@tok(kind:s, text:s)->[s] {
+  ^ [kind, text]
+}
+
+@plain_kind(kind:s)->b {
+  ^ kind == "" || kind == "id" || kind == "ws" || kind == "text"
+}
+
+@emit_escaped(out:[s], text:s) {
+  out.append(html_escape(text))
+}
+
+@open_span(out:[s], kind:s) {
+  ? plain_kind(kind) {
+    ^ N
+  }
+  out.append(`<span class="hl-{kind}">`)
+  ^ N
+}
+
+@render_inner(tokens:[A], line_numbers:b=F)->s {
+  out = []
+  open_kind = ""
+  line_open = F
+  line_no = 1
+  ? line_numbers {
+    out.append(`<span class="hl-line" data-line="1">`)
+    line_open = T
+  }
+
+  % token <- tokens {
+    kind = token[0]
+    text = token[1]
+    ? text == "" {
+      ^>
+    }
+    ? line_numbers {
+      pieces = text.split("\n")
+      p_i = 0
+      %? p_i < #pieces {
+        piece = pieces[p_i]
+        ? piece != "" {
+          ? plain_kind(kind) {
+            ? open_kind != "" {
+              out.append("</span>")
+              open_kind = ""
+            }
+            emit_escaped(out, piece)
+          } : {
+            ? open_kind != kind {
+              ? open_kind != "" {
+                out.append("</span>")
+              }
+              open_span(out, kind)
+              open_kind = kind
+            }
+            emit_escaped(out, piece)
+          }
+        }
+        ? p_i < #pieces - 1 {
+          ? open_kind != "" {
+            out.append("</span>")
+            open_kind = ""
+          }
+          ? line_open {
+            out.append("</span>")
+            line_open = F
+          }
+          out.append("\n")
+          line_no += 1
+          out.append(`<span class="hl-line" data-line="{line_no}">`)
+          line_open = T
+        }
+        p_i += 1
+      }
+    } : {
+      ? plain_kind(kind) {
+        ? open_kind != "" {
+          out.append("</span>")
+          open_kind = ""
+        }
+        emit_escaped(out, text)
+      } : {
+        ? open_kind != kind {
+          ? open_kind != "" {
+            out.append("</span>")
+          }
+          open_span(out, kind)
+          open_kind = kind
+        }
+        emit_escaped(out, text)
+      }
+    }
+  }
+
+  ? open_kind != "" {
+    out.append("</span>")
+  }
+  ? line_numbers && line_open {
+    out.append("</span>")
+  }
+  ^ join_str(out)
+}
+
+@token_texts(tokens:[A])->[s] {
+  out = []
+  % token <- tokens {
+    out.append(token[1])
+  }
+  ^ out
+}
+
+@tokens_text(tokens:[A])->s {
+  ^ join_str(token_texts(tokens))
+}
+
+@lossless(tokens:[A], code:s)->b {
+  ^ tokens_text(tokens) == code
+}
+
+@count_kind(tokens:[A], kind:s)->i {
+  n = 0
+  % token <- tokens {
+    ? token[0] == kind {
+      n += 1
+    }
+  }
+  ^ n
+}
+
+@kind_of_text(tokens:[A], text:s)->[s] {
+  out = []
+  % token <- tokens {
+    ? token[1] == text {
+      out.append(token[0])
+    }
+  }
+  ^ out
+}
