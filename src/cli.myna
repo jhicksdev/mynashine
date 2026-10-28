@@ -202,8 +202,13 @@
   ? cmd == "css" {
     css = default_css(opts["theme"])
     ? opts["out"] != "" {
-      ensure_parent(opts["out"])
-      write_file(opts["out"], css)
+      !{
+        ensure_parent(opts["out"])
+        write_file(opts["out"], css)
+        ^ 0
+      } !!e {
+        ^ fail(`cannot write {opts["out"]}: {e}`)
+      }
     } : {
       sys.stdout.write(css)
     }
