@@ -1,0 +1,65 @@
+@target(py)
+<.harness:{new_results, eq_b, eq_i, eq_s, check, contains, not_contains, lossless, summary}
+<.src.highlight:{highlight_html_document, highlight_block}
+<.src.util:{strip_tags, html_unescape}
+<.markdown_fixture:{render_fences}
+
+@run_html_tests()->[i] {
+  r = new_results()
+
+  md = "# Demo\n\n```myna\n? page :? Page {\n  p(`{.title}`)\n}\n```\n\nAfter.\n"
+  rendered = render_fences(md)
+  contains(r, rendered, "<pre><code class=\"language-myna\">", "fixture emits MynaPress code block shape")
+  escaped_render = render_fences("```myna\nif a < b { p(\"x\") }\n```\n")
+  contains(r, escaped_render, "&lt;", "fixture escapes code")
+  not_contains(r, escaped_render, "if a < b", "fixture does not emit raw code text")
+
+  highlighted = highlight_html_document(rendered)
+  contains(r, highlighted, "<pre class=\"hl\">", "document processor adds hl class")
+  contains(r, highlighted, "class=\"language-myna\"", "document processor preserves language")
+  contains(r, highlighted, "hl-kw", "myna keyword is highlighted")
+  contains(r, highlighted, "hl-self", "self reference inside template is highlighted")
+  not_contains(r, highlighted, "&amp;lt;", "no double escaping")
+  plain_text = html_unescape(strip_tags(highlighted))
+  contains(r, plain_text, "? page :? Page {", "code text survives")
+  contains(r, plain_text, "p(`{.title}`)", "interpolated code text survives")
+  eq_b(r, highlight_html_document(highlighted) == highlighted, T, "document processing is idempotent")
+
+  # Plain pre without a language class.
+  plain = "<pre><code>if x &lt; y &amp;&amp; y &gt; 0</code></pre>"
+  out = highlight_html_document(plain)
+  eq_s(r, out, "<pre class=\"hl\"><code>if x &lt; y &amp;&amp; y &gt; 0</code></pre>", "plain pre is preserved and escaped once")
+  eq_s(r, html_unescape(strip_tags(out)), "if x < y && y > 0", "plain pre round-trips")
+
+  # Multiple blocks and unknown languages.
+  multi = "<pre><code class=\"language-python\">def f():\n    return 1\n</code></pre>\n<pre><code class=\"language-foo\">&lt;x&gt; &amp; y</code></pre>"
+  out = highlight_html_document(multi)
+  contains(r, out, "class=\"language-python\"", "python block keeps its language")
+  contains(r, out, "hl-kw", "python block highlighted")
+  contains(r, out, "class=\"language-foo\"", "unknown language class preserved")
+  contains(r, out, "&lt;x&gt; &amp; y", "unknown language content escaped")
+  eq_i(r, out.count("<pre class=\"hl\">"), 2, "both blocks processed")
+
+  # Markup around blocks is preserved.
+  page = "<h1>Hello</h1><pre><code class=\"language-myna\">^1</code></pre><footer>bye</footer>"
+  out = highlight_html_document(page)
+  contains(r, out, "<h1>Hello</h1>", "leading markup preserved")
+  contains(r, out, "<footer>bye</footer>", "trailing markup preserved")
+
+  # A pre without a code child is left alone.
+  bare = "<pre>not code</pre>"
+  eq_s(r, highlight_html_document(bare), bare, "bare pre is untouched")
+
+  # highlight_block itself
+  block = highlight_block("p(\"hi\")", "myna", F)
+  contains(r, block, "<pre class=\"hl\"><code class=\"language-myna\">", "highlight_block wrapper")
+  contains(r, block, "hl-bi", "highlight_block has token spans")
+
+  # Lossless proof for the combined pipeline.
+  code = "? ok {\n  p(`value: {x + 1}`)\n}\n"
+  block_html = highlight_block(code, "myna")
+  eq_s(r, html_unescape(strip_tags(block_html)), code, "highlight_block is lossless")
+
+  summary("html processing", r)
+  ^ r
+}

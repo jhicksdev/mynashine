@@ -2,6 +2,9 @@
 <sys
 <.test_myna_lexer:{run_myna_lexer_tests}
 <.test_companions:{run_companion_tests}
+<.test_html_proc:{run_html_tests}
+<.test_lossless:{run_lossless_tests}
+<.test_site:{run_site_tests}
 
 @main {
   p("MynaShine test suite")
@@ -14,6 +17,15 @@
   b = run_companion_tests()
   total_p += b[0]
   total_f += b[1]
+  c = run_html_tests()
+  total_p += c[0]
+  total_f += c[1]
+  d = run_lossless_tests()
+  total_p += d[0]
+  total_f += d[1]
+  e = run_site_tests()
+  total_p += e[0]
+  total_f += e[1]
   p("====================")
   p(`TOTAL: {total_p} passed, {total_f} failed`)
   ? total_f > 0 {

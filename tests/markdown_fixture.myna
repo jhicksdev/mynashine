@@ -1,0 +1,45 @@
+@target(py)
+<.src.util:{html_escape}
+
+# A deliberately tiny fenced-code renderer that mirrors MynaPress's markdown
+# output shape. It is a test fixture, not product behaviour.
+
+@render_fences(md:s)->s {
+  normalized = md.replace("\r\n", "\n").replace("\r", "\n")
+  lines = normalized.split("\n")
+  out = []
+  i = 0
+  %? i < #lines {
+    line = lines[i]
+    stripped = line.lstrip()
+    ? stripped.startswith("```") {
+      info = stripped[3:].strip()
+      i += 1
+      code_lines = []
+      %? i < #lines {
+        ? lines[i].lstrip().startswith("```") {
+          i += 1
+          ^!
+        }
+        code_lines.append(lines[i])
+        i += 1
+      }
+      code = "\n".join(code_lines)
+      ? code != "" {
+        code += "\n"
+      }
+      cls = ""
+      ? info != "" {
+        lang = info.split()[0]
+        cls = ` class="language-{html_escape(lang)}"`
+      }
+      out.append(`<pre><code{cls}>{html_escape(code)}</code></pre>`)
+      ^>
+    }
+    ? line.strip() != "" {
+      out.append(`<p>{html_escape(line)}</p>`)
+    }
+    i += 1
+  }
+  ^ "\n".join(out)
+}

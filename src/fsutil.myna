@@ -1,0 +1,50 @@
+@target(py)
+<os
+
+@read_file(path:s)->s {
+  handle = @open(path, "r", encoding="utf-8")
+  text = handle.read()
+  handle.close()
+  ^ text
+}
+
+@write_file(path:s, text:s) {
+  handle = @open(path, "w", encoding="utf-8")
+  handle.write(text)
+  handle.close()
+}
+
+@ensure_dir(path:s) {
+  ? path != "" && !os.path.exists(path) {
+    os.makedirs(path)
+  }
+}
+
+@ensure_parent(path:s) {
+  parent = os.path.dirname(path)
+  ensure_dir(parent)
+}
+
+@is_dir(path:s)->b {
+  ^ os.path.isdir(path)
+}
+
+@is_file(path:s)->b {
+  ^ os.path.isfile(path)
+}
+
+@list_dir(path:s)->[s] {
+  ^ os.listdir(path)
+}
+
+@join_path(a:s, b:s)->s {
+  ^ `{a}/{b}`
+}
+
+@basename(path:s)->s {
+  ^ os.path.basename(path)
+}
+
+@dirname(path:s)->s {
+  ^ os.path.dirname(path)
+}

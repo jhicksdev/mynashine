@@ -1,0 +1,66 @@
+@target(py)
+<os
+<tempfile
+<shutil
+<.harness:{new_results, eq_i, eq_b, eq_s, check, contains, summary}
+<.src.fsutil:{read_file, write_file, ensure_dir, is_file, join_path}
+<.src.site_proc:{process_site}
+<.src.theme:{default_css}
+
+@run_site_tests()->[i] {
+  r = new_results()
+  root = tempfile.mkdtemp(prefix="mynashine-site-")
+  !{
+    ensure_dir(join_path(root, "sub"))
+    page = "<html><body><pre><code class=\"language-myna\">? x {\n  ^1\n}\n</code></pre></body></html>"
+    other = "<html><body><pre><code class=\"language-bash\">$ echo hi\n</code></pre></body></html>"
+    write_file(join_path(root, "index.html"), page)
+    write_file(join_path(root, "sub/page.html"), other)
+
+    first = process_site(root, T, "mynapress")
+    eq_i(r, #first[0], 2, "site found two HTML files")
+    eq_i(r, first[1], 2, "site updated both files")
+    eq_i(r, first[2], 2, "site counted code blocks")
+    check(r, first[3] != "", "site wrote a stylesheet", first[3])
+    check(r, is_file(first[3]), "stylesheet exists", first[3])
+
+    updated_page = read_file(join_path(root, "index.html"))
+    contains(r, updated_page, "pre class=\"hl\"", "in-place page updated")
+    contains(r, updated_page, "hl-kw", "in-place page highlighted")
+    updated_other = read_file(join_path(root, "sub/page.html"))
+    contains(r, updated_other, "hl-dec", "nested page prompt highlighted")
+
+    css = read_file(first[3])
+    eq_i(r, css.count("/* mynashine:start */"), 1, "stylesheet marker once")
+    contains(r, css, "--hl-kw", "stylesheet has token variables")
+    contains(r, css, "prefers-color-scheme", "mynapress theme has dark mode")
+
+    second = process_site(root, T, "mynapress")
+    eq_i(r, second[1], 0, "second site pass is a no-op")
+    eq_i(r, second[2], 2, "second pass still counts blocks")
+    css2 = read_file(second[3])
+    eq_i(r, css2.count("/* mynashine:start */"), 1, "stylesheet injection remains idempotent")
+    eq_s(r, css2, css, "stylesheet content stable")
+
+    dark = default_css("dark")
+    contains(r, dark, "color-scheme:dark", "dark theme explicit")
+    light = default_css("light")
+    contains(r, light, "color-scheme:light", "light theme explicit")
+    hc = default_css("high-contrast")
+    contains(r, hc, "#000000", "high contrast background")
+
+    third = process_site(root, T, "dark")
+    css3 = read_file(third[3])
+    contains(r, css3, "color-scheme:dark", "theme replacement works")
+    eq_i(r, css3.count("/* mynashine:start */"), 1, "theme replacement keeps one block")
+
+    shutil.rmtree(root)
+    summary("site processor", r)
+    ^ r
+  } !!e {
+    r[1] += 1
+    p(`  FAIL site processor raised: {e}`)
+    summary("site processor", r)
+    ^ r
+  }
+}

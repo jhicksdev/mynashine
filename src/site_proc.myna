@@ -1,0 +1,89 @@
+@target(py)
+<os
+<.fsutil:{read_file, write_file, ensure_dir, is_dir, list_dir, join_path}
+<.highlight:{highlight_html_document, default_css}
+<.util:{find_sub, join_str}
+
+# In-place post-processor for a MynaPress (or any static site) build directory.
+
+@collect_html(dir:s, out:[s]) {
+  % name <- list_dir(dir) {
+    path = join_path(dir, name)
+    ? is_dir(path) {
+      collect_html(path, out)
+    } :? name.endswith(".html") {
+      out.append(path)
+    }
+  }
+}
+
+@html_files(root:s)->[s] {
+  out = []
+  collect_html(root, out)
+  ^ out
+}
+
+@inject_stylesheet(root:s, theme:s)->s {
+  assets = join_path(root, "assets")
+  ensure_dir(assets)
+  path = join_path(assets, "style.css")
+  existing = ""
+  ? os.path.isfile(path) {
+    existing = read_file(path)
+  }
+  start_marker = "/* mynashine:start */"
+  end_marker = "/* mynashine:end */"
+  css = default_css(theme)
+  block = `{start_marker}\n{css}{end_marker}`
+  start_at = find_sub(existing, start_marker, 0)
+  end_at = find_sub(existing, end_marker, 0)
+  updated = ""
+  ? start_at >= 0 && end_at > start_at {
+    updated = existing[0:start_at] + block + existing[end_at + #end_marker:]
+  } : {
+    updated = existing
+    ? #updated > 0 && updated[#updated - 1:#updated] != "\n" {
+      updated += "\n"
+    }
+    ? #updated > 0 {
+      updated += "\n"
+    }
+    updated += block + "\n"
+  }
+  write_file(path, updated)
+  ^ path
+}
+
+@process_site(root:s, inject_css:b=F, theme:s="mynapress")->A {
+  files = html_files(root)
+  changed = 0
+  blocks = 0
+  % path <- files {
+    before = read_file(path)
+    after = highlight_html_document(before)
+    ? after != before {
+      write_file(path, after)
+      changed += 1
+    }
+    blocks += count_pre_blocks(before)
+  }
+  css_path = ""
+  ? inject_css {
+    css_path = inject_stylesheet(root, theme)
+  }
+  ^ [files, changed, blocks, css_path]
+}
+
+@count_pre_blocks(html:s)->i {
+  count = 0
+  i = 0
+  %? i < #html {
+    at = find_sub(html, "<pre", i)
+    ? at < 0 {
+      ^ count
+    }
+    count += 1
+    i = at + 4
+  }
+  ^ count
+}

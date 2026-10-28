@@ -1,0 +1,85 @@
+@target(py)
+<os
+<.harness:{new_results, eq_b, eq_i, check, lossless, summary, note}
+<.src.fsutil:{read_file, is_dir, is_file, list_dir, join_path}
+<.src.highlight:{highlight_code}
+<.src.util:{strip_tags, html_unescape}
+
+@collect_myna(dir:s, out:[s]) {
+  % name <- list_dir(dir) {
+    path = join_path(dir, name)
+    ? is_dir(path) && !os.path.islink(path) {
+      ? name != ".git" && name != "build" && name != "__pycache__" {
+        collect_myna(path, out)
+      }
+    } :? name.endswith(".myna") {
+      out.append(path)
+    }
+  }
+}
+
+@repo_root()->s {
+  cwd = os.getcwd()
+  ? is_dir(join_path(cwd, "src")) {
+    ^ cwd
+  }
+  ? is_dir(join_path(cwd, "..")) && is_dir(join_path(cwd, "../src")) {
+    ^ join_path(cwd, "..")
+  }
+  ^ cwd
+}
+
+@run_lossless_tests()->[i] {
+  r = new_results()
+  root = repo_root()
+  files = []
+
+  % name <- ["src", "tests", "examples"] {
+    path = join_path(root, name)
+    ? is_dir(path) {
+      collect_myna(path, files)
+    }
+  }
+
+  # The prompt's cross-project invariant: every Myna file in mynapress/src.
+  press_src = "/home/joseph/Projects/mynapress/src"
+  ? is_dir(press_src) {
+    collect_myna(press_src, files)
+  }
+  myna_examples = "/home/joseph/Projects/myna/examples"
+  ? is_dir(myna_examples) {
+    collect_myna(myna_examples, files)
+  }
+  myna_src = "/home/joseph/Projects/myna/myna"
+  ? is_dir(myna_src) {
+    # The compiler itself is Python, but its Myna-adjacent files are not.
+    # (No .myna files live here today; collecting is harmless.)
+    collect_myna(myna_src, files)
+  }
+
+  check(r, #files > 0, "corpus is not empty", `found {#files} files under {root}`)
+  % path <- files {
+    ? !is_file(path) {
+      ^>
+    }
+    !{
+      code = read_file(path)
+      lossless(r, code, "myna", `corpus {path}`)
+      numbered = highlight_code(code, "myna", T)
+      got = html_unescape(strip_tags(numbered))
+      eq_b(r, got == code, T, `numbered corpus {path}`)
+    } !!e {
+      r[1] += 1
+      note(`corpus {path}`, `    raised: {e}`)
+    }
+  }
+
+  # Companion corpus: the same sources through aliases should also round-trip.
+  spot = "from dataclasses import dataclass\n\n@dataclass\nclass P:\n    x: int = 1\n"
+  lossless(r, spot, "py", "python corpus lossless")
+  lossless(r, "#!/usr/bin/env bash\nset -eu\necho \"hi $USER\"\n", "console", "shell corpus lossless")
+  lossless(r, "<!doctype html>\n<div class=\"a\">{{ x }}</div>\n", "jinja", "template corpus lossless")
+
+  summary(`lossless corpus ({#files} myna files)`, r)
+  ^ r
+}
